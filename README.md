@@ -1,12 +1,3 @@
-MOCBuilder Release
-==========
-Download link:
-#####Stable Version
-
-#####Unstable Version
-20141015_WIN: https://drive.google.com/file/d/0B5hp4f0ytGSfSW5mU1M0WWJUWDQ/view?usp=sharing
-
-
 MOCBuilder Governance Document
 ==========  
 *this document is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License .

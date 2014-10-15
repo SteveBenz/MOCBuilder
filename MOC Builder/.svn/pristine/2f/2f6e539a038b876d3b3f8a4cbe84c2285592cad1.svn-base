@@ -1,0 +1,136 @@
+/*
+ * GPL v3
+ */
+
+package Bricklink.BrickBuilder.api;
+
+import java.io.File;
+import java.io.IOException;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.util.LinkedList;
+import java.util.List;
+
+import javax.net.ssl.SSLContext;
+
+import org.apache.http.NameValuePair;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpPut;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.conn.ssl.SSLConnectionSocketFactory;
+import org.apache.http.conn.ssl.SSLContexts;
+import org.apache.http.entity.mime.MultipartEntity;
+import org.apache.http.entity.mime.MultipartEntityBuilder;
+import org.apache.http.entity.mime.content.FileBody;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.message.BasicNameValuePair;
+
+import Bricklink.org.kleini.bricklink.api.Parameter;
+import Bricklink.org.kleini.bricklink.api.Parser;
+import Bricklink.org.kleini.bricklink.api.Request;
+import Bricklink.org.kleini.bricklink.api.Response;
+import Bricklink.org.kleini.bricklink.api.TrustAllStrategy;
+
+/**
+ * {@link BrickBuilderClient}
+ * 
+ * @author <a href="mailto:himself@kleini.org">Marcus Klein</a>
+ */
+public final class BrickBuilderClient {
+
+	private static final String BASE_URL = "http://ec2-54-255-178-245.ap-southeast-1.compute.amazonaws.com";
+	private final CloseableHttpClient client;
+	
+	public BrickBuilderClient() throws KeyManagementException,
+			NoSuchAlgorithmException, KeyStoreException {
+		super();
+		SSLContext sslcontext = SSLContexts.custom()
+				.loadTrustMaterial(null, new TrustAllStrategy()).build();
+		SSLConnectionSocketFactory sslsf = new SSLConnectionSocketFactory(
+				sslcontext, new String[] { "TLSv1" }, null,
+				SSLConnectionSocketFactory.BROWSER_COMPATIBLE_HOSTNAME_VERIFIER);
+		client = HttpClients.custom().setSSLSocketFactory(sslsf).build();
+	}
+
+	public <T extends Response<?>> T execute(Request<T> request)
+			throws Exception {
+		
+		String url = BASE_URL + request.getPath();
+		HttpRequestBase httpRequest = null;
+		switch (request.getRequestType()) {
+		case GET:
+			httpRequest = new HttpGet(url);
+			addParams2Header(httpRequest, getGETParameter(request));
+			break;
+		case PUT:
+			httpRequest = new HttpPut(url);
+			addParams2Header(httpRequest, getGETParameter(request));
+			break;
+		case POST:
+			httpRequest = new HttpPost(url);
+			addParams2Header(httpRequest, getGETParameter(request));
+			if (addParams2Entity((HttpPost) httpRequest,
+					getGETParameter(request)) == false)
+				return null;
+			break;
+		default:
+			httpRequest = new HttpGet(url);
+		}
+
+		CloseableHttpResponse httpResponse = client.execute(httpRequest);
+		final T response;
+		try {
+			Parser<? extends T, ?> parser = request.getParser();
+			String body = Parser.checkResponse(httpResponse);
+			response = parser.parse(body);
+		} finally {
+			httpResponse.close();
+		}
+		return response;
+	}
+
+	private boolean addParams2Entity(HttpPost httpRequest,
+			List<NameValuePair> params) {
+		MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+		for (NameValuePair param : params) {
+			if (param.getName().equals("file") == false)
+				continue;
+			File file = new File(param.getValue());
+			if (file.exists() == false)
+				return false;
+			builder.addBinaryBody(param.getName(), file);
+		}
+		httpRequest.setEntity(builder.build());
+		return true;
+	}
+
+	public void close() throws IOException {
+		client.close();
+	}
+
+	private static List<NameValuePair> getGETParameter(Request<?> request) {
+		List<NameValuePair> retval = new LinkedList<NameValuePair>();
+		for (Parameter param : request.getParameters()) {
+			retval.add(new BasicNameValuePair(param.getName(), param.getValue()));
+		}
+		return retval;
+	}
+
+	private static void addParams2Header(HttpRequestBase request,
+			List<NameValuePair> params) {
+		if (0 == params.size()) {
+			return;
+		}
+		for (NameValuePair param : params) {
+			request.addHeader(param.getName(), param.getValue());
+		}
+	}
+
+	public String getBaseURL() {
+		return BASE_URL;
+	}
+}

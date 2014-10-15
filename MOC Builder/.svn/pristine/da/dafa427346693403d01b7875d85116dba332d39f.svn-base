@@ -1,0 +1,616 @@
+package Connectivity;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import Command.LDrawPart;
+import Common.Box3;
+import Common.Matrix4;
+import Common.Vector3f;
+import LDraw.Files.LDrawFile;
+import LDraw.Files.LDrawModel;
+import LDraw.Files.LDrawStep;
+import LDraw.Support.ConnectivityLibrary;
+import LDraw.Support.LDrawDirective;
+import LDraw.Support.LDrawPaths;
+import LDraw.Support.LDrawUtilities;
+import LDraw.Support.MatrixMath;
+import LDraw.Support.PartLibrary;
+import Window.MOCBuilder;
+
+public class Custom2dFieldGenerator {
+	enum HoleTypeT {
+		Hole_Rect, Hole_Circle;
+		private int width = 0;
+		private int height = 0;
+
+		public int getHeight() {
+			return this.height;
+		}
+
+		public int getWidth() {
+			return this.width;
+		}
+
+		public void setSize(int width, int height) {
+			this.width = width;
+			this.height = height;
+		}
+	}
+
+	enum StudTypeT {
+		Stud, Stud_RoundingBottom
+	}
+
+	private static Custom2dFieldGenerator _instance = null;
+
+	public synchronized static Custom2dFieldGenerator getInstance() {
+		if (_instance == null)
+			_instance = new Custom2dFieldGenerator();
+		return _instance;
+	}
+
+//	public static void main(String args[]) {
+//		String partName = "54200.dat";
+//
+//		Custom2dFieldGenerator.getInstance().getHoleInfo(partName);
+//		Custom2dFieldGenerator.getInstance().deleteConnFile(partName);
+//	}
+
+	private HashMap<String, ArrayList<HoleTypeT>> holeCandidatePartNameMap;
+	private HashMap<String, ArrayList<StudTypeT>> studCandidatePartNameMap;
+
+	private Custom2dFieldGenerator() {
+
+		holeCandidatePartNameMap = new HashMap<String, ArrayList<HoleTypeT>>();
+		studCandidatePartNameMap = new HashMap<String, ArrayList<StudTypeT>>();
+
+		holeCandidatePartNameMap.put("box5.dat", new ArrayList<HoleTypeT>());
+		holeCandidatePartNameMap.get("box5.dat").add(HoleTypeT.Hole_Rect);
+		holeCandidatePartNameMap.put("box4.dat", new ArrayList<HoleTypeT>());
+		holeCandidatePartNameMap.get("box4.dat").add(HoleTypeT.Hole_Rect);
+		holeCandidatePartNameMap.put("box4-1.dat", new ArrayList<HoleTypeT>());
+		holeCandidatePartNameMap.get("box4-1.dat").add(HoleTypeT.Hole_Rect);
+		holeCandidatePartNameMap.put("stud4o.dat", new ArrayList<HoleTypeT>());
+		holeCandidatePartNameMap.get("stud4o.dat").add(HoleTypeT.Hole_Circle);
+		holeCandidatePartNameMap.put("stud4.dat", new ArrayList<HoleTypeT>());
+		holeCandidatePartNameMap.get("stud4.dat").add(HoleTypeT.Hole_Circle);
+		holeCandidatePartNameMap.put("stud4a.dat", new ArrayList<HoleTypeT>());
+		holeCandidatePartNameMap.get("stud4a.dat").add(HoleTypeT.Hole_Circle);
+		holeCandidatePartNameMap
+				.put("stud4f2n.dat", new ArrayList<HoleTypeT>());
+		holeCandidatePartNameMap.get("stud4f2n.dat").add(HoleTypeT.Hole_Circle);
+
+		studCandidatePartNameMap.put("stud.dat", new ArrayList<StudTypeT>());
+		studCandidatePartNameMap.get("stud.dat").add(StudTypeT.Stud);
+		studCandidatePartNameMap.put("stud2.dat", new ArrayList<StudTypeT>());
+		studCandidatePartNameMap.get("stud2.dat").add(StudTypeT.Stud);
+		studCandidatePartNameMap.put("studel.dat", new ArrayList<StudTypeT>());
+		studCandidatePartNameMap.get("studel.dat").add(StudTypeT.Stud);
+		studCandidatePartNameMap.put("stud2a.dat", new ArrayList<StudTypeT>());
+		studCandidatePartNameMap.get("stud2a.dat").add(StudTypeT.Stud);
+		studCandidatePartNameMap.put("4ring1.dat", new ArrayList<StudTypeT>());
+		studCandidatePartNameMap.get("4ring1.dat").add(StudTypeT.Stud);
+		studCandidatePartNameMap.put("stud10.dat", new ArrayList<StudTypeT>());
+		studCandidatePartNameMap.get("stud10.dat").add(
+				StudTypeT.Stud_RoundingBottom);
+	}
+
+	private void appendTransformMatrixInfo(StringBuilder strBuilder,
+			Matrix4 transformMatrix) {
+		for (int column = 0; column < 3; column++)
+			for (int row = 0; row < 3; row++) {
+				strBuilder.append(" ");
+				strBuilder.append(transformMatrix.element[column][row]);
+			}
+		for (int row = 0; row < 3; row++) {
+			strBuilder.append(" ");
+			strBuilder.append(transformMatrix.element[3][row]);
+		}
+	}
+
+	private boolean checkIsStud(String connName, Matrix4 transformMatrix) {
+		if (connName.toLowerCase().equals("4-4ring1.dat")) {
+			float sizes[] = new float[3];
+			for (int column = 0; column < 3; column++) {
+				float size = 0;
+				for (int row = 0; row < 3; row++) {
+					size += transformMatrix.element[column][row]
+							* transformMatrix.element[column][row];
+				}
+				size = (float) Math.sqrt(size);
+				sizes[column] = size;
+			}
+			if (MatrixMath.compareFloat(sizes[0], 5.0f) == 0
+					&& MatrixMath.compareFloat(sizes[2], 5.0f) == 0)
+				return true;
+			// System.out.println("need more check");
+			// System.out.println(transformMatrix);
+		} else
+			return true;
+		return false;
+	}
+
+	public void deleteConnFile(String partName) {
+		File file = new File(ConnectivityLibrary.ConnectivityFilesPath
+				+ LDrawUtilities.excludeExtensionFromPartName(partName)
+				+ ".conn");
+		if (file.exists())
+			file.delete();
+	}
+
+	public void getHoleInfo(String partName) {
+		LDrawPart part = new LDrawPart();
+		part.initWithPartName(partName, new Vector3f());
+		if (part.isPartDataExist() == false)
+			return;
+
+		// System.out.println("########" + partName + "#########");
+		LDrawModel model;		
+//		part.setCacheModel(model);
+		part.resolvePart();
+		model = part.getCacheModel();
+
+		ArrayList<LDrawDirective> directives = new ArrayList<LDrawDirective>();
+		ArrayList<LDrawPart> candidateForHole = new ArrayList<LDrawPart>();
+		if (model == null)
+			return;
+		directives.addAll(model.steps());
+		while (directives.size() != 0) {
+			LDrawDirective directive = directives.remove(0);
+			if (directive instanceof LDrawPart) {
+				LDrawPart tempPart = (LDrawPart) directive;
+				String tempPartName = tempPart.displayName().toLowerCase();
+				Box3 bounding = tempPart.boundingBox3();
+				Vector3f sizeVector = bounding.getMax().sub(bounding.getMin());
+				if (sizeVector.dot(sizeVector) < 200)
+					continue;
+				// System.out.println(tempPartName);
+				if (holeCandidatePartNameMap.keySet().contains(tempPartName))
+					candidateForHole.add(tempPart);
+				else {
+					tempPart.setCacheModel(PartLibrary.sharedPartLibrary()
+							.readModelAtPath(
+									LDrawPaths.sharedPaths().pathForPartName(
+											tempPart.displayName()), false,
+									null, false));
+					if (tempPart.isConnectivityInfoExist()) {
+						writeConnInfo(partName, tempPart);
+					} else if (tempPart.getCacheModel() != null) {
+						directives.addAll(tempPart.getCacheModel().steps());
+					}
+				}
+
+			} else if (directive instanceof LDrawFile) {
+				LDrawFile file = (LDrawFile) directive;
+				if (file.activeModel() != null)
+					directives.addAll(file.activeModel().steps());
+			} else if (directive instanceof LDrawStep) {
+				LDrawStep step = (LDrawStep) directive;
+				directives.addAll(step.subdirectives());
+			}
+		}
+		// System.out.println("Candidate Directive For Hole");
+		for (LDrawPart targetPart : candidateForHole) {
+			String targetPartName = targetPart.displayName().toLowerCase();
+			Matrix4 transformMatrix = null;
+			HoleTypeT holeType = null;
+			for (HoleTypeT holeTypeTemp : holeCandidatePartNameMap
+					.get(targetPartName)) {
+				// System.out.println(targetPartName + ": " + holeTypeTemp);
+				transformMatrix = getHoleTransform(targetPart, holeTypeTemp,
+						part);
+				if (transformMatrix == null)
+					break;
+				holeType = holeTypeTemp;
+
+				// System.out.println("Projected Transform");
+				// System.out.println(transformMatrix);
+
+				for (int column = 0; column < 3; column++) {
+					float size = 0;
+					for (int row = 0; row < 3; row++) {
+						size += transformMatrix.element[column][row]
+								* transformMatrix.element[column][row];
+					}
+					size = (float) Math.sqrt(size);
+					for (int row = 0; row < 3; row++) {
+						transformMatrix.element[column][row] /= size;
+					}
+				}
+				// System.out.println("Normalized Transform");
+				// System.out.println(transformMatrix);
+
+				if (holeType != null) {
+					writeHoleInfo(partName, targetPart.displayName(), holeType,
+							transformMatrix);
+				}
+			}
+		}
+	}
+
+	private Matrix4 getHoleTransform(LDrawDirective targetDirective,
+			HoleTypeT holeType, LDrawPart parentPart) {
+		if (parentPart.getCacheModel() == null)
+			return null;
+		LDrawModel parentModel = parentPart.getCacheModel();
+		for (LDrawStep step : parentModel.steps()) {
+			for (LDrawDirective directive : step.subdirectives()) {
+				if (directive == targetDirective) {
+					if (directive instanceof LDrawPart) {
+						LDrawPart targetPart = (LDrawPart) targetDirective;
+						Matrix4 transformMatrix = targetPart
+								.transformationMatrix();
+						switch (holeType) {
+						case Hole_Circle: {
+
+							float sizes[] = new float[3];
+							for (int column = 0; column < 3; column++) {
+								float size = 0;
+								for (int row = 0; row < 3; row++) {
+									size += transformMatrix.element[column][row]
+											* transformMatrix.element[column][row];
+								}
+								size = (float) Math.sqrt(size);
+								sizes[column] = size;
+							}
+							// System.out.println(sizes[0] + ", " + sizes[1]
+							// + ", " + sizes[2]);
+							// System.out.println(targetPart.displayName());
+							// System.out.println(transformMatrix);
+
+							Vector3f offset = new Vector3f(-10, -sizes[1] * 4,
+									10);
+
+							Matrix4 rotationMatrix = new Matrix4(
+									transformMatrix);
+							for (int column = 0; column < 3; column++)
+								for (int row = 0; row < 3; row++)
+									rotationMatrix.element[column][row] /= sizes[column];
+
+							offset = MatrixMath.V3RotateByTransformMatrix(
+									offset, rotationMatrix);
+							transformMatrix.translate(offset.x, offset.y,
+									offset.z);
+							Matrix4 yInverse = Matrix4.getIdentityMatrix4();
+							yInverse.element[1][1] *= -1;
+
+							transformMatrix = Matrix4.multiply(yInverse,
+									transformMatrix);
+
+							return transformMatrix;
+						}
+						case Hole_Rect: {
+							float sizes[] = new float[3];
+							for (int column = 0; column < 3; column++) {
+								float size = 0;
+								for (int row = 0; row < 3; row++) {
+									size += transformMatrix.element[column][row]
+											* transformMatrix.element[column][row];
+								}
+								size = (float) Math.sqrt(size);
+								sizes[column] = size;
+							}
+							float x = sizes[0];
+							float z = sizes[2];
+							// System.out.println(targetPart.displayName());
+							// System.out.println(transformMatrix);
+							if (MatrixMath.compareFloat(x % 10, 6) != 0
+									|| MatrixMath.compareFloat(z % 10, 6) != 0)
+								return null;
+
+							Vector3f offset = new Vector3f(-(x + 4), 0, (z + 4));
+
+							holeType.setSize((Math.round(x + 4) / 10),
+									Math.round((z + 4) / 10));
+							Matrix4 rotationMatrix = new Matrix4(
+									transformMatrix);
+							for (int column = 0; column < 3; column++)
+								for (int row = 0; row < 3; row++)
+									rotationMatrix.element[column][row] /= sizes[column];
+
+							offset = MatrixMath.V3RotateByTransformMatrix(
+									offset, rotationMatrix);
+
+							Matrix4 yInverse = Matrix4.getIdentityMatrix4();
+							yInverse.element[1][1] *= -1;
+
+							transformMatrix = Matrix4.multiply(yInverse,
+									transformMatrix);
+							transformMatrix.translate(offset.x, offset.y,
+									offset.z);
+
+							// transformMatrix =
+							// MatrixMath.Matrix4Multiply(transformMatrix,
+							// parentPart.transformationMatrix());
+							return transformMatrix;
+						}
+						}
+					}
+				} else {
+					if (directive instanceof LDrawPart) {
+						LDrawPart part = (LDrawPart) directive;
+						Matrix4 transformMatrix = null;
+						transformMatrix = getHoleTransform(targetDirective,
+								holeType, part);
+						if (transformMatrix != null) {
+							// System.out.println("Parent's Transform Matrix: "
+							// + part.displayName());
+							// System.out.println(part.transformationMatrix());
+
+							transformMatrix = Matrix4.multiply(transformMatrix,
+									part.transformationMatrix());
+
+							return transformMatrix;
+						}
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	public void getStudInfo(String partName) {		
+		LDrawPart part = new LDrawPart();
+		part.initWithPartName(partName, new Vector3f());
+		if (part.isPartDataExist() == false)
+			return;
+		LDrawModel model;
+		part.resolvePart();
+//		LDrawModel model = PartLibrary.sharedPartLibrary()
+//				.readModelAtPath(
+//						LDrawPaths.sharedPaths().pathForPartName(
+//								partName), false,
+//						null, false);
+//		part.setCacheModel(model);
+		model = part.getCacheModel();
+
+		ArrayList<LDrawDirective> directives = new ArrayList<LDrawDirective>();
+		ArrayList<LDrawPart> candidateForStud = new ArrayList<LDrawPart>();
+		if (model == null)
+			return;
+		directives.addAll(model.steps());
+		while (directives.size() != 0) {
+			LDrawDirective directive = directives.remove(0);
+			if (directive instanceof LDrawPart) {
+				LDrawPart tempPart = (LDrawPart) directive;
+				Box3 bounding = tempPart.boundingBox3();
+				Vector3f sizeVector = bounding.getMax().sub(bounding.getMin());
+				if (sizeVector.dot(sizeVector) < 100)
+					continue;
+				String tempPartName = tempPart.displayName().toLowerCase();
+				// System.out.println(tempPartName);
+				if (studCandidatePartNameMap.keySet().contains(tempPartName)) {
+					candidateForStud.add(tempPart);
+				} else {
+					tempPart.setCacheModel(PartLibrary.sharedPartLibrary()
+							.readModelAtPath(
+									LDrawPaths.sharedPaths().pathForPartName(
+											tempPart.displayName()), false,
+									null, false));
+					if (tempPart.isConnectivityInfoExist()) {
+						writeConnInfo(partName, tempPart);
+					} else if (tempPart.getCacheModel() != null) {
+						directives.addAll(tempPart.getCacheModel().steps());
+					}
+				}
+
+			} else if (directive instanceof LDrawFile) {
+				LDrawFile file = (LDrawFile) directive;
+				if (file.activeModel() != null)
+					directives.addAll(file.activeModel().steps());
+			} else if (directive instanceof LDrawStep) {
+				LDrawStep step = (LDrawStep) directive;
+				directives.addAll(step.subdirectives());
+			}
+		}
+
+		for (LDrawPart targetPart : candidateForStud) {
+			String targetPartName = targetPart.displayName().toLowerCase();
+			Matrix4 transformMatrix = getStudTransform(targetPart, part);
+
+			if (checkIsStud(targetPartName, transformMatrix) == true) {
+				for (int column = 0; column < 3; column++) {
+					float size = 0;
+					for (int row = 0; row < 3; row++) {
+						size += transformMatrix.element[column][row]
+								* transformMatrix.element[column][row];
+					}
+					size = (float) Math.sqrt(size);
+					for (int row = 0; row < 3; row++)
+						transformMatrix.element[column][row] /= size;
+				}
+				for (StudTypeT studType : studCandidatePartNameMap
+						.get(targetPartName)) {
+					writeStudInfo(partName, targetPartName, studType,
+							transformMatrix);
+				}
+			}
+		}
+	}
+
+	private Matrix4 getStudTransform(LDrawDirective targetDirective,
+			LDrawPart parentPart) {
+		if (parentPart.getCacheModel() == null)
+			return null;
+		LDrawModel parentModel = parentPart.getCacheModel();
+		for (LDrawStep step : parentModel.steps()) {
+			for (LDrawDirective directive : step.subdirectives()) {
+				if (directive == targetDirective) {
+					if (directive instanceof LDrawPart) {
+						LDrawPart targetPart = (LDrawPart) targetDirective;
+						Matrix4 transformMatrix = targetPart
+								.transformationMatrix();
+
+						Vector3f offset = new Vector3f(-10, 0, 10);
+						Matrix4 rotationMatrix = new Matrix4(transformMatrix);
+						for (int column = 0; column < 3; column++) {
+							float size = 0;
+							for (int row = 0; row < 3; row++) {
+								size += transformMatrix.element[column][row]
+										* transformMatrix.element[column][row];
+							}
+							size = (float) Math.sqrt(size);
+
+							for (int row = 0; row < 3; row++)
+								rotationMatrix.element[column][row] /= size;
+						}
+						offset = MatrixMath.V3RotateByTransformMatrix(offset,
+								rotationMatrix);
+						transformMatrix.translate(offset.x, offset.y, offset.z);
+						return transformMatrix;
+
+					}
+				} else {
+					if (directive instanceof LDrawPart) {
+
+						Matrix4 transformMatrix = null;
+						transformMatrix = getStudTransform(targetDirective,
+								(LDrawPart) directive);
+						if (transformMatrix != null) {
+							LDrawPart part = (LDrawPart) directive;
+							// System.out.println("Parent's Transform Matrix: "
+							// + part.displayName());
+							// System.out.println(part.transformationMatrix());
+							transformMatrix = Matrix4.multiply(transformMatrix,
+									part.transformationMatrix());
+
+							return transformMatrix;
+						}
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	private void writeConnInfo(String partName, LDrawPart tempPart) {
+		StringBuilder strBuilder = new StringBuilder();
+		ArrayList<Connectivity> connList = tempPart.getConnectivityList(false,
+				true);
+		if (connList == null)
+			return;
+
+		for (Connectivity conn : connList) {
+			strBuilder.append(conn.toString());
+			strBuilder.append("\r\n");
+		}
+
+		File file = new File(ConnectivityLibrary.ConnectivityFilesPath
+				+ LDrawUtilities.excludeExtensionFromPartName(partName)
+				+ ".conn");
+		try {
+			FileWriter fw = null;
+			if (file.exists())
+				fw = new FileWriter(file, true);
+			else
+				fw = new FileWriter(file, false);
+
+			fw.write(strBuilder.toString());
+			fw.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	private void writeHoleInfo(String partName, String connName,
+			HoleTypeT holeType, Matrix4 transformMatrix) {
+		StringBuilder strBuilder = new StringBuilder();
+		strBuilder.append("2 22");
+		appendTransformMatrixInfo(strBuilder, transformMatrix);
+
+		switch (holeType) {
+		case Hole_Rect:
+			strBuilder.append(" ");
+			strBuilder.append(2 * holeType.getHeight());
+			strBuilder.append(" ");
+			strBuilder.append(2 * holeType.getWidth());
+			strBuilder.append(" ");
+			for (int height = 0; height < holeType.getHeight() * 2 + 1; height++)
+				for (int width = 0; width < holeType.getWidth() * 2 + 1; width++) {
+					if (height == 0 || height == holeType.getHeight() * 2)
+						strBuilder.append("22:1:1,");
+					else if (width == 0 || width == holeType.getWidth() * 2)
+						strBuilder.append("22:1:1,");
+					else if (height % 2 == 1 && width % 2 == 1)
+						strBuilder.append("17:4:1,");
+					else
+						strBuilder.append("22:1:1,");
+				}
+			break;
+		case Hole_Circle:
+			strBuilder
+					.append(" 2 2 29:0,29:0,29:0,29:0,17:4:1,29:0,29:0,29:0,29:0,");
+			break;
+		default:
+			return;
+		}
+
+		strBuilder.append(" ");
+		strBuilder.append(connName);
+		strBuilder.append("\r\n");
+		// System.out.println(strBuilder.toString());
+		File file = new File(ConnectivityLibrary.ConnectivityFilesPath
+				+ LDrawUtilities.excludeExtensionFromPartName(partName)
+				+ ".conn");
+		try {
+			FileWriter fw = new FileWriter(file, true);
+			fw.write(strBuilder.toString());
+			fw.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	private void writeStudInfo(String partName, String connName,
+			StudTypeT studType, Matrix4 transformMatrix) {
+
+		StringBuilder strBuilder = new StringBuilder();
+		strBuilder.append("3 23");
+
+		appendTransformMatrixInfo(strBuilder, transformMatrix);
+		switch (studType) {
+		case Stud:
+			strBuilder
+					.append(" 2 2 18:1:1,23:4:1,18:1:1,23:4:1,0:4:1,23:4:1,18:1:1,23:4:1,18:1:1,");
+			break;
+		case Stud_RoundingBottom:
+			strBuilder
+					.append(" 2 2 29:0,29:0,29:0,29:0,0:4:1,29:0,29:0,29:0,29:0,");
+			break;
+
+		}
+
+		strBuilder.append(" ");
+		strBuilder.append(connName);
+		strBuilder.append("\r\n");
+		// System.out.println(transformMatrix);
+		// System.out.println(strBuilder.toString());
+		File file = new File(ConnectivityLibrary.ConnectivityFilesPath
+				+ LDrawUtilities.excludeExtensionFromPartName(partName)
+				+ ".conn");
+		try {
+			FileWriter fw = new FileWriter(file, true);
+			fw.write(strBuilder.toString());
+			fw.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+}

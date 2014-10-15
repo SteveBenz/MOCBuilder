@@ -1,0 +1,374 @@
+package Connectivity;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import Command.LDrawPart;
+import Common.Matrix4;
+import Common.Vector3f;
+import ConnectivityEditor.Connectivity.AxleT;
+import LDraw.Support.MatrixMath;
+import LDraw.Support.type.LDrawGridTypeT;
+
+public class Axle extends Connectivity {
+	int startCapped;
+	int endCapped;
+	float length;
+	int grabbing;
+	int requireGrabbing;
+
+	public Axle() {
+	}
+
+	public int getstartCapped() {
+		return startCapped;
+	}
+
+	public void setstartCapped(String startCapped) {
+		this.startCapped = Integer.parseInt(startCapped);
+	}
+
+	public int getendCapped() {
+		return endCapped;
+	}
+
+	public void setendCapped(String endCapped) {
+		this.endCapped = Integer.parseInt(endCapped);
+	}
+
+	public int getgrabbing() {
+		return grabbing;
+	}
+
+	public void setgrabbing(String grabbing) {
+		this.grabbing = Integer.parseInt(grabbing);
+	}
+
+	public int getrequireGrabbing() {
+		return requireGrabbing;
+	}
+
+	public void setrequireGrabbing(String requireGrabbing) {
+		this.requireGrabbing = Integer.parseInt(requireGrabbing);
+	}
+
+	public float getlength() {
+		return length;
+	}
+
+	public void setlength(String length) {
+		this.length = Float.parseFloat(length) * 25;
+	}
+
+	@Override
+	public String toString() {
+		return super.toString(String.format("%d %d %f %d %d", startCapped,
+				endCapped, length / 25.0f, grabbing, requireGrabbing));
+	}
+
+	@Override
+	public int parseString(String[] line) {
+		int size = super.parseString(line);
+		setstartCapped(line[size + 1]);
+		setendCapped(line[size + 2]);
+		setlength(line[size + 3]);
+		setgrabbing(line[size + 4]);
+		setrequireGrabbing(line[size + 5]);
+		return 0;
+	}
+
+	@Override
+	public String getName() {
+		return "Axle";
+	}
+
+	@Override
+	public Matrix4 getTransformMatrixForSnapConnecting(
+			Connectivity existingConn, Matrix4 initialTransformOfPart) {
+		if (existingConn == null || (existingConn instanceof Axle == false))
+			return null;
+
+		Matrix4 newTransform = getRotationMatrixForConnection(existingConn,
+				initialTransformOfPart);
+		if (newTransform != null) {
+			Vector3f posDiff = getCurrentPos(initialTransformOfPart).sub(
+					getCurrentPos(newTransform));
+			newTransform.translate(posDiff.x, posDiff.y, posDiff.z);
+
+			Axle existingAxle = (Axle) existingConn;
+			Vector3f realMatchingPosOfExistingConn = existingConn
+					.getCurrentPos();
+
+			Vector3f realPosOfTestingConn = getCurrentPos(newTransform);
+
+			Vector3f posDifferent = realPosOfTestingConn
+					.sub(realMatchingPosOfExistingConn);
+
+			Vector3f axleDirection = getDirectionVector(newTransform);
+
+			float endPointOfExsiting = existingAxle.getDirectionVector()
+					.scale(existingAxle.getlength()).dot(axleDirection);
+			float minSlidingLength = 0;
+			float maxSlidingLength = getlength();
+			boolean isSameDirection = false;
+
+			if (endPointOfExsiting > 0) {
+				isSameDirection = true;
+				minSlidingLength = -(getlength() + existingAxle.getlength());
+				if (existingAxle.getstartCapped() != 0 || getendCapped() != 0)
+					minSlidingLength = 0;
+
+				maxSlidingLength = Math.max(existingAxle.getlength(),
+						getlength());
+				if (getstartCapped() != 0 || existingAxle.getendCapped() != 0) {
+					maxSlidingLength = Math.min(existingAxle.getlength(),
+							getlength());
+				}
+
+			} else {
+				minSlidingLength = -(getlength() + existingAxle.getlength());
+				if (existingAxle.getendCapped() != 0)
+					minSlidingLength = Math.max(minSlidingLength,
+							-existingAxle.getlength());
+				if (getendCapped() != 0)
+					minSlidingLength = Math.max(minSlidingLength, -getlength());
+
+				maxSlidingLength = 0;
+				if (existingAxle.getstartCapped() != 0) {
+					maxSlidingLength = Math.min(maxSlidingLength, -getlength());
+				}
+				if (getstartCapped() != 0)
+					maxSlidingLength = Math.min(maxSlidingLength, getlength());
+			}
+
+			// if start or end capped, restrict the axle sliding.
+			if (maxSlidingLength < minSlidingLength)
+				return null;
+
+			float projectedDistance = posDifferent.dot(axleDirection);
+			// System.out.println("isSameDirection: " + isSameDirection);
+			// System.out.println("Connectible Range: " + minSlidingLength +
+			// ", "
+			// + maxSlidingLength);
+			// System.out.println("ProjectedDistance: " + projectedDistance);
+
+			float distance = posDifferent.dot(posDifferent) - projectedDistance
+					* projectedDistance;
+			distance = (float) Math.sqrt(distance);
+
+			if (MatrixMath.compareFloat(distance,
+					LDrawGridTypeT.Coarse.getXZValue() * 2) > 0)
+				return null;
+
+			if (MatrixMath.compareFloat(projectedDistance, maxSlidingLength
+					+ LDrawGridTypeT.Coarse.getXZValue()) >= 0)
+				return null;
+			else if (MatrixMath.compareFloat(projectedDistance,
+					maxSlidingLength) >= 0)
+				projectedDistance = maxSlidingLength;
+			else if (MatrixMath.compareFloat(projectedDistance,
+					minSlidingLength - LDrawGridTypeT.Coarse.getXZValue()) < 0)
+				return null;
+			else if (MatrixMath.compareFloat(projectedDistance,
+					minSlidingLength) < 0)
+				projectedDistance = minSlidingLength;
+
+			Vector3f posAdjust = realMatchingPosOfExistingConn
+					.sub(realPosOfTestingConn);
+			posAdjust = posAdjust.add(axleDirection.scale(projectedDistance));
+			newTransform.translate(posAdjust.x, posAdjust.y, posAdjust.z);
+		}
+		return newTransform;
+	}
+
+	@Override
+	public ConnectivityTestResultT isConnectable(IConnectivity connector) {
+		if (connector == null || (connector instanceof Axle == false))
+			return ConnectivityTestResultT.None;
+
+		if (this.getClass().isInstance(connector) == true) {
+			if (this.gettype() % 2 == 1)
+				if (this.gettype() - 1 == ((Connectivity) connector).gettype())
+					return ConnectivityTestResultT.True;
+			if (((Connectivity) connector).gettype() % 2 == 1)
+				if (((Connectivity) connector).gettype() - 1 == this.gettype())
+					return ConnectivityTestResultT.True;
+		}
+		Axle other = (Axle) connector;
+
+		AxleT thisType = AxleT.byValue(gettype());
+		AxleT otherType = AxleT.byValue(other.gettype());
+
+		if (thisType.toString().contains("Socket_O_")
+				&& otherType.toString().contains("Axle_"))
+			return ConnectivityTestResultT.True;
+		if (thisType.toString().contains("Socket_Cross_")
+				&& otherType.toString().contains("Axle_")) {
+			return ConnectivityTestResultT.True;
+		}
+		if (thisType.toString().contains("Axle_O_")
+				&& (otherType.toString().contains("Socket_O_") || otherType
+						.toString().contains("Socket_Cross_")))
+			return ConnectivityTestResultT.True;		
+		if (thisType.toString().contains("Axle_Cross_")
+				&& (otherType.toString().contains("Socket_O_") || otherType
+						.toString().contains("Socket_Cross_")))
+			return ConnectivityTestResultT.True;
+
+		return ConnectivityTestResultT.None;
+	}
+
+	@Override
+	public ConnectivityTestResultT isConnectable(IConnectivity connector,
+			Matrix4 partTransformMatrix) {
+
+		ConnectivityTestResultT result = isConnectable(connector);
+		if (result != ConnectivityTestResultT.True)
+			return result;
+
+		Matrix4 newTransformMatrix = getTransformMatrixForSnapConnecting(
+				connector.getConnectivity(), partTransformMatrix);
+		if (newTransformMatrix == null) {
+			return ConnectivityTestResultT.False;
+		}
+		if (getCurrentPos(partTransformMatrix).sub(
+				getCurrentPos(newTransformMatrix)).length() > 3f) {
+			// System.out.println(getCurrentPos(partTransformMatrix).sub(
+			// getCurrentPos(newTransformMatrix)).length());
+			return ConnectivityTestResultT.False;
+		}
+
+		return result;
+	}
+
+	@Override
+	public Matrix4 getRotationMatrixForConnection(Connectivity existingConn,
+			Matrix4 initialTransformMatrixOfPart) {
+		Matrix4 newMatrix = new Matrix4(initialTransformMatrixOfPart);
+		newMatrix.element[3][0] = newMatrix.element[3][1] = newMatrix.element[3][2] = 0;
+
+		LDrawPart existingPart = existingConn.getParent();
+		Matrix4 existingConnTransformMatrix = Matrix4.multiply(
+				existingConn.getTransformMatrix(),
+				existingPart.transformationMatrix());
+
+		Matrix4 candidate = Matrix4.multiply(Matrix4.inverse(transformMatrix),
+				existingConnTransformMatrix);
+		for (int i = 0; i < 3; i++)
+			candidate.element[3][i] = 0;
+
+		Vector3f rotationVector = getRotationVector(candidate);
+
+		Matrix4 inverseOfCandidate = new Matrix4(candidate);
+		inverseOfCandidate.rotate((float) Math.toRadians(180), rotationVector);
+
+		Matrix4 initMatrix = new Matrix4(initialTransformMatrixOfPart);
+		for (int i = 0; i < 3; i++)
+			initMatrix.element[3][i] = 0;
+
+		Vector3f directionVector_init = getDirectionVector(initMatrix);
+		Vector3f directionVector_candidate = getDirectionVector(candidate);
+		Vector3f directionVector_icandidate = getDirectionVector(inverseOfCandidate);
+
+		float dirDiff = (float) Math.acos(directionVector_init
+				.dot(directionVector_candidate)
+				/ directionVector_candidate.length()
+				/ directionVector_init.length());
+		float dirDiff2 = (float) Math.acos(directionVector_init
+				.dot(directionVector_icandidate)
+				/ directionVector_icandidate.length()
+				/ directionVector_init.length());
+
+		// System.out.println(getDirectionVector(initMatrix));
+		// System.out.println(getDirectionVector(candidate));
+		// System.out.println(getDirectionVector(inverseOfCandidate));
+		// System.out.println("DirectionVectorDiff: " + dirDiff + ", " +
+		// dirDiff2);
+		// System.out.println("#####################");
+
+		if (directionVector_init.equals(directionVector_candidate))
+			;
+		else if (directionVector_init.equals(directionVector_icandidate)) {
+			candidate = inverseOfCandidate;
+		}
+
+		else if (dirDiff > dirDiff2) {
+			candidate = inverseOfCandidate;
+		}
+
+		ArrayList<Matrix4> candidateForRotation = new ArrayList<Matrix4>();
+		candidateForRotation.add(candidate);
+		for (int i = 0; i < 3; i++) {
+			candidate = new Matrix4(candidate);
+			candidate.rotate((float) Math.toRadians(90),
+					existingConn.getDirectionVector());
+			candidateForRotation.add(candidate);
+		}
+
+		dirDiff = -1;
+		// System.out.println("#########################");
+		for (Matrix4 matrix : candidateForRotation) {
+			dirDiff2 = matrix
+					.getDifferentValueForRotation(initialTransformMatrixOfPart);
+			if (dirDiff < 0) {
+				dirDiff = dirDiff2;
+				newMatrix = matrix;
+			} else if (dirDiff > dirDiff2 + 0.1f) {
+				dirDiff = dirDiff2;
+				newMatrix = matrix;
+			}
+		}
+		return newMatrix;
+	}
+
+	private Vector3f getRotationVector(Matrix4 candidate) {
+		Vector3f directionVector = getDirectionVector(candidate);
+		// System.out.println("DirectionVector: "+directionVector);
+		Vector3f rotationVector = null;
+		switch (Direction6T.getDirectionOfTransformMatrix(Matrix4.multiply(
+				transformMatrix, candidate))) {
+		case X_Minus:
+		case X_Plus:
+			rotationVector = directionVector.cross(new Vector3f(0, 1, 0));
+			if (rotationVector.equals(new Vector3f()))
+				rotationVector = new Vector3f(0, 1, 0);
+			break;
+		case Y_Minus:
+		case Y_Plus:
+			rotationVector = directionVector.cross(new Vector3f(0, 0, 1));
+			if (rotationVector.equals(new Vector3f()))
+				rotationVector = new Vector3f(0, 0, 1);
+			break;
+		case Z_Minus:
+		case Z_Plus:
+			rotationVector = directionVector.cross(new Vector3f(1, 0, 0));
+			if (rotationVector.equals(new Vector3f()))
+				rotationVector = new Vector3f(1, 0, 0);
+			break;
+		}
+		// System.out.println("Rotation Vector: "+rotationVector);
+		return rotationVector;
+	}
+
+	@Override
+	public Vector3f getDirectionVector() {
+		Vector3f directionVector = new Vector3f(0, 1, 0);
+		Matrix4 tempMatrix = Matrix4.multiply(getTransformMatrix(),
+				parent.transformationMatrix());
+
+		directionVector = MatrixMath.V3RotateByTransformMatrix(directionVector,
+				tempMatrix);
+		return directionVector.scale(-1);
+	}
+
+	@Override
+	public Vector3f getDirectionVector(Matrix4 newTransformMatrix) {
+		Vector3f directionVector = new Vector3f(0, 1, 0);
+		Matrix4 tempMatrix = Matrix4.multiply(getTransformMatrix(),
+				newTransformMatrix);
+
+		directionVector = MatrixMath.V3RotateByTransformMatrix(directionVector,
+				tempMatrix);
+		return directionVector.scale(-1);
+	}
+}

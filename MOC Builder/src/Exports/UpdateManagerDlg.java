@@ -1,0 +1,103 @@
+package Exports;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.Cursor;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Dialog;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.TabFolder;
+import org.eclipse.swt.widgets.TabItem;
+
+import Window.BackgroundThreadManager;
+import Window.MOCBuilder;
+import Window.ProgressDlg;
+
+public class UpdateManagerDlg extends Dialog {
+
+	public static void main(String args[]) {
+		Display display = Display.getDefault();
+		new UpdateManagerDlg(new Shell(display), SWT.NO_TRIM).open();
+	}
+
+	protected Shell shell;
+	private TabFolder tabFolder;
+
+	/**
+	 * Create the dialog.
+	 * 
+	 * @param parent
+	 * @param style
+	 */
+	public UpdateManagerDlg(Shell parent, int style) {
+		super(parent, style);
+		setText("Update");
+	}
+
+	/**
+	 * Open the dialog.
+	 * 
+	 */
+	public Object open() {
+		Cursor waitCursor = new Cursor(Display.getCurrent(), SWT.CURSOR_WAIT);
+		getParent().setCursor(waitCursor);
+		createContents();
+		shell.open();
+		shell.layout();
+		Display display = shell.getDisplay();
+		getParent().setCursor(null);
+		while (!shell.isDisposed()) {
+			if (!display.readAndDispatch()) {
+				display.sleep();
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Create contents of the dialog.
+	 */
+	private void createContents() {
+		shell = new Shell(getParent());
+		shell.setSize(800, 650);
+		shell.setText(getText());
+		
+		UpdateManager.getInstance();
+		if(BackgroundThreadManager.getInstance().sizeOfThread()!=0)
+			new ProgressDlg(shell, SWT.NONE).open();
+
+		tabFolder = new TabFolder(shell, SWT.NONE);
+		tabFolder.setBounds(10, 10, 780, 610);
+
+		TabItem tbtmNewItem = new TabItem(tabFolder, SWT.NONE);
+		tbtmNewItem.setText("ID Mapping Info");
+
+		Composite composite = new IdMappingInfoComposite(tabFolder,
+				SWT.EMBEDDED);
+		tbtmNewItem.setControl(composite);
+
+		tbtmNewItem = new TabItem(tabFolder, SWT.NONE);
+		tbtmNewItem.setText("Color Mapping Info");
+
+		composite = new ColorMappingInfoComposite(tabFolder, SWT.EMBEDDED);
+		tbtmNewItem.setControl(composite);
+
+		tbtmNewItem = new TabItem(tabFolder, SWT.NONE);
+		tbtmNewItem.setText("Connectivity Info");
+
+		composite = new ConnectivityInfoComposite(tabFolder, SWT.EMBEDDED);
+		tbtmNewItem.setControl(composite);
+
+		tbtmNewItem = new TabItem(tabFolder, SWT.NONE);
+		tbtmNewItem.setText("Parts Info");
+
+		composite = new PartInfoComposite(tabFolder, SWT.EMBEDDED);
+		tbtmNewItem.setControl(composite);
+
+		// tabFolder.setSelection(3);
+	}
+
+	protected void handleApplyToMappingList() {
+		CompatiblePartManager.getInstance().writeMappingListToFileCache();
+	}
+}

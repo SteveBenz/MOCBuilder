@@ -1,0 +1,1167 @@
+package Window;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map.Entry;
+import java.util.zip.ZipFile;
+
+import javax.media.opengl.GL2;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.FileDialog;
+import org.eclipse.swt.widgets.MessageBox;
+import org.eclipse.swt.widgets.Shell;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+
+import BrickControlGuide.BrickMovementGuideRenderer;
+import Builder.AutoSaveManager;
+import Builder.BuilderConfigurationManager;
+import Builder.BrickSelectionManager;
+import Builder.DragSelectionInfoRenderer;
+import Builder.MainCamera;
+import Builder.MetaInfoRenderer;
+import Command.LDrawPart;
+import Common.Box3;
+import Common.Matrix4;
+import Common.Ray3;
+import Common.Size2;
+import Common.Vector3f;
+import Connectivity.Direction6T;
+import Connectivity.GlobalConnectivityManager;
+import Connectivity.GlobalConnectivityRenderer;
+import Exports.UpdateManager;
+import Grouping.GroupingManager;
+import LDD.bricks.Part;
+import LDraw.Files.LDrawContainer;
+import LDraw.Files.LDrawFile;
+import LDraw.Files.LDrawMPDModel;
+import LDraw.Files.LDrawModel;
+import LDraw.Files.LDrawStep;
+import LDraw.Support.LDrawDirective;
+import LDraw.Support.LDrawGLCameraScroller;
+import LDraw.Support.LDrawGLRenderer;
+import LDraw.Support.LDrawUtilities;
+import LDraw.Support.MatrixMath;
+import LDraw.Support.type.LDrawGridTypeT;
+import LddToLdr.Ldd2Ldr;
+import Notification.ConnectivityModified;
+import Notification.ILDrawSubscriber;
+import Notification.INotificationMessage;
+import Notification.LDrawDirectiveAdded;
+import Notification.LDrawDirectiveModified;
+import Notification.LDrawDirectiveRemoved;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+import Resource.SoundEffectManager;
+import UndoRedo.DirectiveAction;
+import UndoRedo.LDrawUndoRedoManager;
+import UndoRedo.MovePartsAction;
+
+public class MOCBuilder {
+	public final static String APP_NAME = "MOC Builder";
+	private LDrawGLRenderer glRenderer;
+	private MetaInfoRenderer metaInfoRenderer;
+	private BrickMovementGuideRenderer brickMovementGuideRenderer;
+	private GlobalConnectivityRenderer connectivityRenderer;
+	private DragSelectionInfoRenderer brickSelectionInfoRenderer;
+	private GlobalConnectivityManager globalConnectivityManager;
+	private MainCamera camera;
+	private LDrawStep currentStep = null;
+	private boolean isChanged;
+
+	private LDrawUndoRedoManager undoRedoManager;
+
+	private LDrawFile ldrawFile;
+
+	private BuilderConfigurationManager configurationManager = null;
+	private BrickSelectionManager brickSelectionManager = null;
+
+	private static MOCBuilder mocBuilder;
+
+	private Shell shell;
+
+	public static synchronized MOCBuilder getInstance() {
+		if (mocBuilder == null) {
+			mocBuilder = new MOCBuilder();
+		}
+		return mocBuilder;
+	}
+
+	public void setShell(Shell shell) {
+		this.shell = shell;
+	}
+
+	public static void main(String[] args) {
+		Display.setAppName(APP_NAME);
+		Display display = Display.getDefault();
+		mocBuilder = new MOCBuilder();
+		MOCBuilderUI brickBuilderUI = new MOCBuilderUI(mocBuilder);
+		brickBuilderUI.open(display);
+	}
+
+	long average = 0;
+
+	private MOCBuilder() {
+		UpdateManager.getInstance();
+		undoRedoManager = LDrawUndoRedoManager.getInstance();
+		configurationManager = BuilderConfigurationManager.getInstance();
+		brickSelectionManager = BrickSelectionManager.getInstance();
+		globalConnectivityManager = GlobalConnectivityManager.getInstance();
+		SoundEffectManager.getInstance();
+		// UpdateManager.getInstance();
+		newLDrawFile();
+		initRenderer();
+
+		camera.setDistanceBetweenObjectToCamera(400);
+		AutoSaveManager.getInstance();
+
+		ILDrawSubscriber subscriber = new ILDrawSubscriber() {
+
+			@Override
+			public void receiveNotification(NotificationMessageT messageType,
+					INotificationMessage msg) {
+				String partName = ((ConnectivityModified) msg).getPart()
+						.displayName();
+				for (LDrawPart part : getAllPartInFile()) {
+					if (part.displayName().equals(partName)) {
+						part.getConnectivityList(true, false);
+						part.getCollisionBoxList(false);
+					}
+				}
+			}
+		};
+
+		NotificationCenter.getInstance().addSubscriber(subscriber,
+				NotificationMessageT.ConnectivityModified);
+	}
+
+	public void changeStepIndex(LDrawStep step, int newIndex) {
+		LDrawModel model = ldrawFile.activeModel();
+		model.removeDirective(step);
+		model.insertDirective(step, newIndex);
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.LDrawStepAdded);
+	}
+
+	public void insertDirectiveToWorkingFile(int index, LDrawContainer step,
+			LDrawDirective directive) {
+		insertDirectiveToWorkingFile(index, step, directive, true);
+	}
+
+	public void addDirectiveToWorkingFile(LDrawDirective directive) {
+		addDirectiveToWorkingFile(directive, true);
+	}
+
+	public void addDirectiveToWorkingFile(LDrawDirective directive,
+			boolean updateConnectivityManager) {
+		if (LDrawStep.class.isInstance(directive)) {
+			LDrawStep step = (LDrawStep) directive;
+			ldrawFile.activeModel().addStep(step);
+		} else {
+			if (currentStep == null)
+				currentStep = ldrawFile.activeModel().visibleStep();
+
+			addDirectiveToWorkingFile(currentStep, directive,
+					updateConnectivityManager);
+		}
+	}
+
+	public void addDirectiveToWorkingFile(LDrawStep step,
+			LDrawDirective directive) {
+		addDirectiveToWorkingFile(step, directive, true);
+	}
+
+	public void insertDirectiveToWorkingFile(int index,
+			LDrawContainer container, LDrawDirective directive,
+			boolean updateConnectivityManager) {
+		if (container == null || container.subdirectives().contains(directive)) {
+			return;
+		}
+		container.insertDirective(directive, index);
+
+		if (LDrawPart.class.isInstance(directive)) {
+			LDrawPart part = (LDrawPart) directive;
+
+			globalConnectivityManager.addPart(part, updateConnectivityManager);
+			brickSelectionManager.addPart(part, updateConnectivityManager);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartAdded,
+					new LDrawDirectiveAdded(directive.enclosingDirective(),
+							directive));
+			updateGridRange();
+		} else if (directive instanceof LDrawStep) {
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawStepAdded,
+					new LDrawDirectiveAdded(directive.enclosingDirective(),
+							directive));
+		} else
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawDirectiveAdded,
+					new LDrawDirectiveAdded(directive.enclosingDirective(),
+							directive));
+	}
+
+	public void addDirectiveToWorkingFile(LDrawContainer container,
+			LDrawDirective directive, boolean updateConnectivityManager) {
+		if (container == null || container.subdirectives().contains(directive)) {
+			return;
+		}
+		container.addDirective(directive);
+
+		if (LDrawPart.class.isInstance(directive)) {
+			LDrawPart part = (LDrawPart) directive;
+
+			globalConnectivityManager.addPart(part, updateConnectivityManager);
+			brickSelectionManager.addPart(part, updateConnectivityManager);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartAdded,
+					new LDrawDirectiveAdded(directive.enclosingDirective(),
+							directive));
+			updateGridRange();
+		} else if (directive instanceof LDrawStep) {
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawStepAdded,
+					new LDrawDirectiveAdded(directive.enclosingDirective(),
+							directive));
+		} else
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawDirectiveAdded,
+					new LDrawDirectiveAdded(directive.enclosingDirective(),
+							directive));
+		
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+
+	}
+
+	public void addDirectiveToWorkingFileForDragAndDrop(LDrawDirective directive) {
+		if (currentStep == null)
+			currentStep = ldrawFile.activeModel().visibleStep();
+		currentStep.addDirective(directive);
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+	}
+
+	public LDrawStep addStepToWorkingFile() {
+		LDrawStep step = ldrawFile.activeModel().addStep();
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.LDrawStepAdded,
+				new LDrawDirectiveAdded(step.enclosingDirective(), step));
+		setCurrentStep(step);
+
+		return step;
+	}
+
+	public void insertStepToWorkingFileAt(int index, LDrawStep step) {
+		ldrawFile.activeModel().insertDirective(step, index);
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.LDrawStepAdded,
+				new LDrawDirectiveAdded(step.enclosingDirective(), step));
+	}
+
+	public LDrawStep addStepToWorkingFileAt(int index) {
+		LDrawStep step = ldrawFile.activeModel().addStep(index);
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.LDrawStepAdded,
+				new LDrawDirectiveAdded(step.enclosingDirective(), step));
+		return step;
+	}
+
+	public BrickMovementGuideRenderer getBrickMovementGuideRenderer() {
+		return brickMovementGuideRenderer;
+	}
+
+	public DragSelectionInfoRenderer getBrickSelectionInfoRenderer() {
+		return brickSelectionInfoRenderer;
+	}
+
+	public MainCamera getCamera() {
+		return camera;
+	}
+
+	public GlobalConnectivityRenderer getConnectivityRenderer() {
+		return this.connectivityRenderer;
+	}
+
+	public LDrawStep getCurrentStep() {
+		if (currentStep == null) {
+			return ldrawFile.activeModel().visibleStep();
+		} else {
+			return currentStep;
+		}
+	}
+
+	public LDrawGLRenderer getGLRenderer() {
+		return glRenderer;
+	}
+
+	private Ray3 prevRay = null;
+	private Vector3f prevHitPos;
+	private LDrawPart prevHitPart;
+	private boolean prevIgnoreSelected;
+	private float lastHittedDistance;
+
+	public LDrawPart getHittedPart(float screenX, float screenY,
+			boolean ignoreSelectedParts) {
+		updateHittedInfoCache(screenX, screenY, ignoreSelectedParts);
+
+		return prevHitPart;
+	}
+
+	public Vector3f getHittedPos(float screenX, float screenY,
+			boolean ignoreSelectedParts) {
+		updateHittedInfoCache(screenX, screenY, ignoreSelectedParts);
+
+		return prevHitPos;
+	}
+
+	public float getLastHittedDistance() {
+		return lastHittedDistance;
+	}
+
+	private void updateHittedInfoCache(float screenX, float screenY,
+			boolean ignoreSelectedParts) {
+		Ray3 ray = camera.getRay(screenX, screenY);
+
+		if (ray.equals(prevRay) && prevIgnoreSelected == ignoreSelectedParts) {
+			return;
+		}
+
+		Matrix4 transform = new Matrix4();
+		transform.setIdentity();
+		HashMap<LDrawDirective, Float> hits = new HashMap<LDrawDirective, Float>();
+		ldrawFile.hitTest(ray, transform, null, hits);
+		float dist = 200000.0f;
+		Vector3f hitPos = null;
+		LDrawPart hittedPart = null;
+		for (Entry<LDrawDirective, Float> entry : hits.entrySet()) {
+			LDrawPart part = (LDrawPart) entry.getKey();
+			Float distance = entry.getValue();
+			if (ignoreSelectedParts == true && part.isDraggingPart())
+				continue;
+			if (dist > distance.floatValue()) {
+				dist = distance.floatValue();
+				hitPos = ray.getOrigin()
+						.add(ray.getDirection().scale(distance));
+				hittedPart = part;
+			}
+			// System.out.println("part " + part.displayName() + " distance"
+			// + distance +
+			// "Position: "+ray.getOrigin().add(ray.getDirection().scale(distance)));
+		}
+
+		if (hitPos == null)
+			hitPos = camera.screenToWorldXZ(screenX, screenY, 0);
+		prevHitPos = hitPos;
+		prevRay = ray;
+		prevHitPart = hittedPart;
+		prevIgnoreSelected = ignoreSelectedParts;
+		lastHittedDistance = dist;
+	}
+
+	public MetaInfoRenderer getMetaInfoRenderer() {
+		return metaInfoRenderer;
+	}
+
+	public LDrawFile getWorkingLDrawFile() {
+		return ldrawFile;
+	}
+
+	public void initGLReleatedComponent(Size2 size, GL2 gl2) {
+		glRenderer.initWithBoundsCamera(size, camera);
+
+		LDrawGLCameraScroller scroller = new LDrawGLCameraScroller();
+		scroller.setDocumentSize(new Size2(800f, 600f));
+		glRenderer.setDelegate(null, scroller);
+		glRenderer.setLDrawDirective(ldrawFile);
+		glRenderer.prepareOpenGL(gl2);
+	}
+
+	private void initRenderer() {
+		camera = new MainCamera();
+		camera.setCurrentCameraRotation(new Vector3f((float) Math.PI, -0.52f, 0));
+
+		glRenderer = new LDrawGLRenderer();
+		metaInfoRenderer = new MetaInfoRenderer(this, camera);
+		brickMovementGuideRenderer = BrickMovementGuideRenderer
+				.getInstance(camera);
+		connectivityRenderer = new GlobalConnectivityRenderer(camera);
+		brickSelectionInfoRenderer = new DragSelectionInfoRenderer();
+	}
+
+	public void isVisibleStudHoleMatrix(boolean flag) {
+		connectivityRenderer.isVisible(flag);
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+	}
+
+	private void ldrawFileChanged() {
+		if (glRenderer == null || glRenderer.isReadyToUse() == false)
+			return;
+
+		if (glRenderer != null)
+			glRenderer.setLDrawDirective(ldrawFile);
+
+		camera.setDefault();
+		currentStep = null;
+
+		isChanged = false;
+		brickSelectionManager.clearAllPart(false);
+		globalConnectivityManager.clear(false);
+		brickSelectionManager.clearAllPart(false);
+		undoRedoManager.clear();
+		GroupingManager.getInstance().clear();
+
+		for (LDrawDirective directive : ldrawFile.activeModel().subdirectives()) {
+			if (LDrawStep.class.isInstance(directive)) {
+				LDrawStep step = (LDrawStep) directive;
+				for (LDrawDirective subDirective : step.subdirectives())
+					if (LDrawPart.class.isInstance(subDirective)) {
+						LDrawPart part = (LDrawPart) subDirective;
+						globalConnectivityManager.addPart(part, false);
+						globalConnectivityManager.updateMatrix(part, false);
+						brickSelectionManager.addPart(part, false);
+					}
+			}
+		}
+		brickMovementGuideRenderer.setLDrawPart(null);
+//		globalConnectivityManager.updateMatrixAll();
+		brickSelectionManager.updateScreenProjectionVerticesMapAll();
+		updateGridRange();
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.LDrawFileActiveModelDidChange);
+		shell.getDisplay().asyncExec(new Runnable() {
+
+			@Override
+			public void run() {
+				if (ldrawFile != null) {
+					if (ldrawFile.path() != null)
+						shell.setText(APP_NAME + ": " + ldrawFile.path());
+					else
+						shell.setText(APP_NAME + ": untitled");
+				}
+			}
+		});
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+	}
+
+	public boolean moveDirectiveBy(LDrawDirective directive, Vector3f pos) {
+		return moveDirectiveBy(directive, pos, true);
+	}
+
+	public boolean moveDirectiveBy(LDrawDirective directive, Vector3f pos,
+			boolean useSnap) {
+		boolean isMoved = false;
+		if (LDrawPart.class.isInstance(directive)) {
+			LDrawPart part = (LDrawPart) directive;
+			if (pos != null)
+				isMoved = part.moveBy(new Vector3f(pos.x, pos.y, pos.z),
+						configurationManager.getGridUnit(), useSnap);
+			updateGridRange();
+		}
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+
+		return isMoved;
+	}
+
+	public void moveDirectiveTo(LDrawDirective directive, Vector3f pos) {
+		moveDirectiveTo(directive, pos, true);
+	}
+
+	public void moveDirectiveTo(LDrawDirective directive, Vector3f pos,
+			boolean useSnap) {
+		if (LDrawPart.class.isInstance(directive)) {
+			LDrawPart part = (LDrawPart) directive;
+			if (pos != null) {
+				Matrix4 newTransform = null;
+
+				long t = System.nanoTime();
+				
+					newTransform = GlobalConnectivityManager.getInstance()
+							.getClosestConnectablePos(part, pos);
+				long diff = (System.nanoTime() - t);
+				average = (long) (average * 0.8 + diff * 0.2);
+//				 System.out.println("avr: " + average + ", " + diff);
+
+				if (newTransform == null) {
+					newTransform = new Matrix4(
+							brickSelectionManager
+									.getStartMoveTransformMatrix(part));
+
+					if (useSnap)
+						pos = LDrawGridTypeT.getSnappedPos(pos,
+								configurationManager.getGridUnit());
+					newTransform.element[3][0] = pos.x;
+					newTransform.element[3][1] = pos.y;
+					newTransform.element[3][2] = pos.z;
+				}
+
+				part.setTransformationMatrix(newTransform);
+			}
+			updateGridRange();
+			
+			NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+		}
+	}
+
+	public void moveDirectiveToWithoutConnectivity(LDrawDirective directive,
+			Vector3f pos) {
+		boolean useConnectivity = configurationManager.isUseConnectivity();
+		configurationManager.setUseConnectivity(false);
+		moveDirectiveTo(directive, pos, false);
+		configurationManager.setUseConnectivity(useConnectivity);
+	}
+
+	public void newLDrawFile() {
+		Display display = Display.getDefault();
+		Shell shell = display.getActiveShell();
+		if (shell == null || checkChanged(shell)) {
+			ldrawFile = LDrawFile.newEditableFile();
+			ldrawFile.activeModel().addStep();
+			ldrawFile.setPath(null);
+			ldrawFileChanged();
+		}
+	}
+
+	public void openFile(final String path) {
+		BackgroundThreadManager.getInstance().add(new Runnable() {
+			@Override
+			public void run() {
+				long t = System.nanoTime();
+				if (path.toLowerCase().endsWith(".lxfml")
+						|| path.toLowerCase().endsWith(".lxf")) {
+					try {
+						Ldd2Ldr ldd2ldr = new Ldd2Ldr(System
+								.getProperty("user.dir") + "/Data/ldraw.xml");
+						String outputFile = LDrawUtilities
+								.excludeExtensionFromPartName(path) + ".ldr";
+						System.out.println(outputFile);
+						ldd2ldr.convert(path, outputFile);
+						ldrawFile = LDrawFile
+								.fileFromContentsAtPath(outputFile);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				} else
+					ldrawFile = LDrawFile.fileFromContentsAtPath(path);
+				ldrawFileChanged();
+				System.out.println((System.nanoTime() - t) / 1000000000.0f
+						+ " seconds to load.");
+			}
+		});
+		if (BackgroundThreadManager.getInstance().sizeOfThread() != 0)
+			new ProgressDlg(Display.getDefault().getActiveShell(), SWT.NONE)
+					.open();
+	}
+
+	public void importFile(String path, Vector3f pos) {
+		LDrawFile file = LDrawFile.fileFromContentsAtPath(path);
+		file.activeModel().setModelName(path);
+
+		for (LDrawMPDModel model : file.submodels()) {
+			ldrawFile.addSubmodel(model);
+		}
+
+		if (pos == null) {
+			pos = new Vector3f(0, 0, 0);
+		}
+		LDrawPart part = new LDrawPart();
+		part.initWithPartName(file.activeModel().modelName(), pos);
+		part.setDisplayName(file.activeModel().modelName());
+		part.resolvePart();
+		addDirectiveToWorkingFile(part);		
+	}
+
+	public void importLXFMLFile(String fileName) {
+		DocumentBuilderFactory docBuildFact = DocumentBuilderFactory
+				.newInstance();
+		Document docXML = null;
+
+		try {
+			DocumentBuilder docBuild = docBuildFact.newDocumentBuilder();
+			if (fileName.endsWith("lxf")) {
+				ZipFile zip = new ZipFile(fileName);
+				docXML = docBuild.parse(zip.getInputStream(zip
+						.getEntry("IMAGE100.LXFML")));
+				zip.close();
+			} else {
+				File file = new File(fileName);
+				docXML = docBuild.parse(file);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		docXML.getDocumentElement().normalize();
+
+		ArrayList<Part> lddParts = new ArrayList<Part>();
+
+		NodeList brickList = docXML.getElementsByTagName("Brick");
+		NodeList partList;
+		Element brickNode, partNode;
+		ArrayList<String> parts = new ArrayList<String>();
+		String designID;
+		Part part;
+		for (int i = 0, j; i < brickList.getLength(); i++) {
+			brickNode = (Element) brickList.item(i);
+			designID = brickNode.getAttribute("designID");
+			partList = brickNode.getElementsByTagName("Part");
+			for (j = 0; j < partList.getLength(); j++) {
+				partNode = (Element) partList.item(j);
+				designID = ((Element) partNode).getAttribute("designID");
+				if (!parts.contains(designID)) {
+					parts.add(designID);
+				}
+				part = new Part((Element) partNode);
+				lddParts.add(part);
+			}
+		}
+	}
+
+	public void removeDirectiveFromWorkingFile(LDrawDirective directive) {
+		removeDirectiveFromWorkingFile(directive, true);
+	}
+
+	public void removeDirectiveFromWorkingFile(LDrawDirective directive,
+			boolean updateConnectivityManager) {
+		if (directive instanceof LDrawStep) {
+			LDrawStep step = (LDrawStep) directive;
+			if (ldrawFile.activeModel().subdirectives().size() > 1) {
+				ldrawFile.activeModel().removeDirective(step);
+				currentStep = null;
+			}
+
+			for (LDrawDirective subDirectives : step.subdirectives()) {
+				if (subDirectives instanceof LDrawPart) {
+					globalConnectivityManager.removePart(
+							(LDrawPart) subDirectives,
+							updateConnectivityManager);
+					brickSelectionManager.removePart((LDrawPart) subDirectives);
+				}
+			}
+
+			BrickSelectionManager.getInstance().clearSelection(
+					updateConnectivityManager);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawStepRemoved,
+					new LDrawDirectiveRemoved(directive.enclosingDirective(),
+							0, directive));
+		} else if (directive instanceof LDrawPart) {
+			LDrawStep parent = directive.enclosingStep();
+			LDrawPart part = (LDrawPart) directive;
+			try {
+				directive.enclosingStep().removeDirective(part);
+			} catch (Exception e) {
+				e.getStackTrace();
+			}
+			BrickSelectionManager.getInstance().removePartFromSelection(part);
+			globalConnectivityManager.removePart(part,
+					updateConnectivityManager);
+			brickSelectionManager.removePart(part);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartRemoved,
+					new LDrawDirectiveRemoved(parent, 0, directive));
+		}
+		updateGridRange();
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+	}
+
+	public void removeSelectedDirective() {
+		for (LDrawPart part : brickSelectionManager.getSelectedPartList()) {
+			removeDirectiveFromWorkingFile(part);
+			globalConnectivityManager.removePart(part);
+		}
+		brickSelectionManager.clearSelection(true);
+	}
+
+	public void rotateSelectedDirectiveBy(Vector3f degree) {
+		if(brickSelectionManager.isEmpty())return;
+		
+		LDrawPart centeredPart = brickMovementGuideRenderer.getLDrawPart();
+		if (centeredPart == null)
+			centeredPart = brickSelectionManager.getFirstPart();
+
+		Matrix4 newTransform = getResultTransformMatrixOfRotateDirectiveByFromCenter(
+				centeredPart, Math.abs(degree.length()), degree,
+				centeredPart.position());
+		brickSelectionManager.getBrickGroupForTransform().applyTransform(
+				centeredPart, newTransform);
+
+		handleTransformChanged_SelectedDirective();
+	}
+
+	public boolean saveAs(Shell shell, String filepath) {
+		if (shell != null && filepath == null) {
+			FileDialog fileDialog = new FileDialog(shell, SWT.SAVE);
+			fileDialog.setFilterExtensions(new String[] { "*.ldr", "*.mpd",
+					"*.dat" });
+			fileDialog.setFileName("untitled");
+			filepath = fileDialog.open();
+		}
+		if (filepath == null)
+			return false;
+		File file = new File(filepath);
+		if (shell != null && file.exists() == true) {
+			MessageBox messageBox = new MessageBox(shell, SWT.ICON_QUESTION
+					| SWT.YES | SWT.NO);
+			messageBox
+					.setMessage("Selected file is already exists. \r\n Do you want to overwrite it?");
+			if (messageBox.open() != SWT.YES) {
+				return false;
+			}
+		}
+
+		FileOutputStream fos;
+		try {
+			String str = ldrawFile.write();
+			fos = new FileOutputStream(file);
+			fos.write(str.getBytes());
+			fos.flush();
+			fos.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+			return false;
+		}
+		ldrawFile.setPath(filepath);
+		isChanged = false;
+
+		if (ldrawFile != null)
+			if (ldrawFile.path() != null)
+				Display.getCurrent().getActiveShell()
+						.setText(APP_NAME + ": " + ldrawFile.path());
+			else
+				Display.getCurrent().getActiveShell()
+						.setText(APP_NAME + ": untitled");
+		return true;
+	}
+
+	public void saveFile() {
+		removeEmptyStep();
+		if (ldrawFile.path() != null)
+			saveAs(null, ldrawFile.path());
+		else
+			saveAs(Display.getDefault().getActiveShell(), ldrawFile.path());
+	}
+
+	public void setCurrentStep(LDrawStep step) {
+		currentStep = step;
+	}
+
+	public void snapToGrid() {
+		boolean useConnectivity = configurationManager.isUseConnectivity();
+		configurationManager.setUseConnectivity(false);
+		ArrayList<LDrawPart> selectedPartList = brickSelectionManager
+				.getSelectedPartList();
+		if (selectedPartList.size() == 0)
+			return;
+		LDrawPart lastSelectedPart = selectedPartList.get(selectedPartList
+				.size() - 1);
+		Vector3f pos = lastSelectedPart.position();
+		lastSelectedPart.setTransformationMatrix(Direction6T
+				.getSnappedTransformMatrix(lastSelectedPart
+						.transformationMatrix()));
+		lastSelectedPart.moveBy(pos, configurationManager.getGridUnit());
+
+		brickSelectionManager.getBrickGroupForTransform().applyTransform(
+				lastSelectedPart, lastSelectedPart.transformationMatrix());
+		brickSelectionManager.updateStartMoveTransformMatrixMap();
+		configurationManager.setUseConnectivity(useConnectivity);
+
+		handleTransformChanged_SelectedDirective();
+	}
+
+	public void updateGridRange() {
+		float[] range = new float[6];
+		range[0] = 3.40282347E+38f; // minx
+		range[1] = -3.40282347E+38f; // maxx
+		range[2] = 3.40282347E+38f; // minz
+		range[3] = -3.40282347E+38f; // maxz
+		range[4] = 3.40282347E+38f; // bottom y
+		range[5] = -3.40282347E+38f; // top y
+
+		Matrix4 transform = new Matrix4();
+		transform.setIdentity();
+
+		ldrawFile.getRange(transform, range);
+		range[4] = 3.40282347E+38f; // bottom y
+		range[5] = -3.40282347E+38f; // top y
+
+		metaInfoRenderer.setRange(range);
+	}
+
+	public void changeDirectiveIndex(LDrawStep step, LDrawDirective directive,
+			int newIndex) {
+		step.removeDirective(directive);
+		step.insertDirective(directive, newIndex);
+
+		if (directive instanceof LDrawPart)
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartAdded,
+					new LDrawDirectiveAdded(step, directive));
+	}
+
+	public void ChangeDirectivesParentStepAction(LDrawDirective directive,
+			LDrawStep oldStep, LDrawStep newStep) {
+		oldStep.removeDirective(directive);
+		newStep.addDirective(directive);
+
+		if (directive instanceof LDrawPart) {
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartAdded,
+					new LDrawDirectiveAdded(oldStep, directive));
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartAdded,
+					new LDrawDirectiveAdded(newStep, directive));
+		}
+	}
+
+	public void ChangeDirectivesParentStepAction(LDrawDirective directive,
+			LDrawStep oldStep, LDrawStep newStep, int index) {
+		oldStep.removeDirective(directive);
+		newStep.insertDirective(directive, index);
+
+		if (directive instanceof LDrawPart) {
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartAdded,
+					new LDrawDirectiveAdded(oldStep, directive));
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartAdded,
+					new LDrawDirectiveAdded(newStep, directive));
+		}
+	}
+
+	public ArrayList<LDrawPart> getAllPartInFile() {
+		return getAllPartInFile(true);
+	}
+
+	public ArrayList<LDrawPart> getAllPartInFile(boolean extractLdr) {
+		LDrawModel model = ldrawFile.activeModel();
+		return LDrawUtilities.extractLDrawPartListModel(model, extractLdr);
+	}
+
+	public Matrix4 getResultTransformMatrixOfRotateDirectiveByFromCenter(
+			LDrawDirective directive, float angle, Vector3f rotationVector,
+			Vector3f center) {
+		if (LDrawPart.class.isInstance(directive)) {
+			LDrawPart part = (LDrawPart) directive;
+			if (MatrixMath.compareFloat(angle, 0) != 0) {
+				return part.getTransformMatrixForRotateByDegrees(angle,
+						rotationVector, center);
+			}
+			return part.transformationMatrix();
+		}
+		return null;
+	}
+
+	public Matrix4 getResultTransformMatrixOfMoveDirectiveBy(
+			LDrawDirective directive, Vector3f pos, boolean useSnap) {
+		if (LDrawPart.class.isInstance(directive)) {
+			LDrawPart part = (LDrawPart) directive;
+			if (pos != null)
+				return part.getTransformMatrixForMoveBy(pos,
+						configurationManager.getGridUnit(), useSnap);
+
+			return part.transformationMatrix();
+		}
+		return null;
+	}
+
+	public void setChanged() {
+		isChanged = true;
+	}
+
+	public boolean checkChanged(Shell shell) {
+		if (isChanged) {
+			MessageBox box = new MessageBox(shell, SWT.YES | SWT.NO
+					| SWT.CANCEL | SWT.APPLICATION_MODAL | SWT.ICON_QUESTION);
+			box.setText("Your changes will be lost if you don't save");
+			box.setMessage("Do you want save?");
+			switch (box.open()) {
+			case SWT.YES:
+				return saveAs(shell, ldrawFile.path());
+			case SWT.NO:
+				return true;
+			case SWT.CANCEL:
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public void autoGrouping() {
+		ArrayList<LDrawPart> initialLists = brickSelectionManager
+				.getSelectedPartList();
+		if (initialLists.size() == 0) {
+			return;
+		}
+		ArrayList<LDrawPart> groupedLists = new ArrayList<LDrawPart>(
+				initialLists.size());
+		autoGrouping(initialLists, groupedLists);
+	}
+
+	private void autoGrouping(ArrayList<LDrawPart> initialLists,
+			ArrayList<LDrawPart> groupedLists) {
+		ArrayList<LDrawPart> connectedParts;
+		LDrawStep oldStep, newStep;
+		for (LDrawPart part : initialLists) {
+			if (groupedLists.contains(part))
+				continue;
+			newStep = ldrawFile.activeModel().addStep();
+			connectedParts = GlobalConnectivityManager.getInstance()
+					.getConnectedPart(part, null, true);
+			for (LDrawPart connectedPart : connectedParts) {
+				oldStep = connectedPart.enclosingStep();
+				if (oldStep == null)
+					continue;
+				removeDirectiveFromWorkingFile(connectedPart);
+				if (oldStep.size() == 0) {
+					removeDirectiveFromWorkingFile(oldStep);
+				}
+				addDirectiveToWorkingFile(newStep, connectedPart);
+				groupedLists.add(connectedPart);
+			}
+		}
+	}
+
+	public void removeEmptyStep() {
+		ArrayList<LDrawStep> emptyStepList = new ArrayList<LDrawStep>();
+		for (LDrawStep step : ldrawFile.activeModel().steps()) {
+			boolean isContainPart = false;
+			for (LDrawDirective directive : step.subdirectives())
+				if (directive instanceof LDrawPart) {
+					isContainPart = true;
+					break;
+				}
+			if (isContainPart == false)
+				emptyStepList.add(step);
+		}
+
+		for (LDrawStep step : emptyStepList)
+			removeDirectiveFromWorkingFile(step, false);
+	}
+
+	public void hideAllStep() {
+		for (LDrawStep step : getWorkingLDrawFile().activeModel().steps()) {
+			for (LDrawDirective directive : step.subdirectives())
+				if (directive instanceof LDrawPart)
+					((LDrawPart) directive).setHidden(true);
+		}
+	}
+
+	public void showStep(int index) {
+		LDrawStep step = getWorkingLDrawFile().activeModel().steps().get(index);
+		if (step == null)
+			return;
+		for (LDrawDirective directive : step.subdirectives())
+			if (directive instanceof LDrawPart)
+				((LDrawPart) directive).setHidden(false);
+	}
+
+	public int getNumOfSteps() {
+		return getWorkingLDrawFile().activeModel().steps().size();
+	}
+
+	public void showAllStep() {
+		for (LDrawStep step : getWorkingLDrawFile().activeModel().steps()) {
+			for (LDrawDirective directive : step.subdirectives())
+				if (directive instanceof LDrawPart)
+					((LDrawPart) directive).setHidden(false);
+		}
+
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+	}
+
+	public void hideStep(int index) {
+		LDrawStep step = getWorkingLDrawFile().activeModel().steps().get(index);
+		if (step == null)
+			return;
+		for (LDrawDirective directive : step.subdirectives())
+			if (directive instanceof LDrawPart)
+				((LDrawPart) directive).setHidden(true);
+
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+	}
+
+	public void adjustRotationMatrixForSelectedDirective() {
+		if (brickSelectionManager.isEmpty())
+			return;
+
+		ArrayList<LDrawPart> selectedPartList = brickSelectionManager
+				.getSelectedPartList();
+
+		Matrix4 rotationMatrix = selectedPartList.get(
+				selectedPartList.size() - 1).transformationMatrix();
+
+		rotationMatrix.element[3][0] = rotationMatrix.element[3][1] = rotationMatrix.element[3][2] = 0;
+
+		for (LDrawPart part : selectedPartList) {
+			Matrix4 partTransform = part.transformationMatrix();
+			Matrix4 newTransform = new Matrix4(rotationMatrix);
+			for (int i = 0; i < 3; i++)
+				newTransform.element[3][i] = partTransform.element[3][i];
+			part.setTransformationMatrix(newTransform);
+		}
+
+		handleTransformChanged_SelectedDirective();
+	}
+
+	public void alignSelectedDirective(Direction6T direction) {
+		ArrayList<LDrawPart> selectedPartList = brickSelectionManager
+				.getSelectedPartList();
+		if (selectedPartList.size() < 2)
+			return;
+
+		LDrawPart basis = null;
+		for (LDrawPart part : selectedPartList) {
+			if (basis == null) {
+				basis = part;
+				continue;
+			}
+			Box3 boundingBox = part.boundingBox3();
+			Vector3f min = boundingBox.getMax();
+			Vector3f max = boundingBox.getMin();
+			boolean flag = false;
+			switch (direction) {
+			case X_Minus:
+				if (min.x < basis.boundingBox3().getMin().x)
+					flag = true;
+				break;
+			case X_Plus:
+				if (max.x > basis.boundingBox3().getMax().x)
+					flag = true;
+				break;
+			case Y_Minus:
+				if (min.y < basis.boundingBox3().getMin().y)
+					flag = true;
+				break;
+			case Y_Plus:
+				if (max.y > basis.boundingBox3().getMax().y)
+					flag = true;
+				break;
+			case Z_Minus:
+				if (min.z < basis.boundingBox3().getMin().z)
+					flag = true;
+				break;
+			case Z_Plus:
+				if (max.z > basis.boundingBox3().getMax().z)
+					flag = true;
+				break;
+			}
+			if (flag == true) {
+				basis = part;
+			}
+		}
+		Box3 boundingBox_basis = basis.boundingBox3();
+
+		for (LDrawPart part : selectedPartList) {
+			if (part == basis)
+				continue;
+			Box3 boundingBox = part.boundingBox3();
+			Vector3f min = boundingBox.getMin();
+			Vector3f max = boundingBox.getMax();
+			Matrix4 newTransform = part.transformationMatrix();
+			switch (direction) {
+			case X_Minus:
+				newTransform.translate(boundingBox_basis.getMin().x - min.x, 0,
+						0);
+				break;
+			case X_Plus:
+				newTransform.translate(boundingBox_basis.getMax().x - max.x, 0,
+						0);
+				break;
+			case Y_Minus:
+				newTransform.translate(0, boundingBox_basis.getMin().y - min.y,
+						0);
+				break;
+			case Y_Plus:
+				newTransform.translate(0, boundingBox_basis.getMax().y - max.y,
+						0);
+				break;
+			case Z_Minus:
+				newTransform.translate(0, 0, boundingBox_basis.getMin().z
+						- min.z);
+				break;
+			case Z_Plus:
+				newTransform.translate(0, 0, boundingBox_basis.getMax().z
+						- max.z);
+				break;
+			}
+			part.setTransformationMatrix(newTransform);
+		}
+
+		handleTransformChanged_SelectedDirective();
+	}
+
+	public void handleTransformChanged_SelectedDirective() {
+		MovePartsAction action = new MovePartsAction();
+		Matrix4 originalMatrix;
+		ArrayList<LDrawPart> partList = brickSelectionManager
+				.getSelectedPartList();
+		for (LDrawPart part : partList) {
+			brickSelectionManager.updateScreenProjectionVerticesMap(part);
+			originalMatrix = BrickSelectionManager.getInstance()
+					.getInitialMoveTransformMatrix(part);
+			if (originalMatrix == null)
+				continue;
+			action.addMovePart(part, originalMatrix,
+					part.transformationMatrix());
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartTransformed,
+					new LDrawDirectiveModified(part));
+		}
+		LDrawUndoRedoManager.getInstance().pushUndoAction(action);
+
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedReDraw);
+	}
+
+	public void makeNewStepFromSeletion() {
+		LDrawStep newStep = addStepToWorkingFile();
+		LDrawStep parentStep;
+
+		DirectiveAction action = new DirectiveAction();
+		for (LDrawPart part : brickSelectionManager.getSelectedPartList()) {
+			action.removeDirective(part);
+			parentStep = part.enclosingStep();
+			parentStep.removeDirective(part);
+			if (parentStep.size() == 0) {
+				mocBuilder.removeDirectiveFromWorkingFile(parentStep);
+			}
+			newStep.addDirective(part);
+		}
+		action.addDirective(newStep);
+		LDrawUndoRedoManager.getInstance().pushUndoAction(action);
+	}
+
+	public void setAuthor(String author) {
+		if (this.ldrawFile != null && this.ldrawFile.activeModel() != null) {
+			this.ldrawFile.activeModel().setAuthor(author);
+		}
+	}
+
+	public String getAuthor() {
+		if (this.ldrawFile != null && this.ldrawFile.activeModel() != null)
+			return this.ldrawFile.activeModel().author();
+		return "";
+	}
+
+	public void setModelName(String name) {
+		if (this.ldrawFile != null && this.ldrawFile.activeModel() != null) {
+			this.ldrawFile.activeModel().setFileName(name);
+		}
+	}
+
+	public String getModelName() {
+		if (this.ldrawFile != null && this.ldrawFile.activeModel() != null)
+			return this.ldrawFile.activeModel().fileName();
+		return "";
+	}
+}

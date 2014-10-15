@@ -1,0 +1,44 @@
+package LDraw.Support;
+
+public class Range {
+	/**
+	 * @uml.property  name="start"
+	 * @uml.associationEnd  multiplicity="(0 -1)" elementType="LDraw.Files.LDrawMPDModel"
+	 */
+	int start;
+	/**
+	 * @uml.property  name="end"
+	 * @uml.associationEnd  multiplicity="(0 -1)" elementType="java.lang.String"
+	 */
+	int end;
+
+	public Range() {
+		this.start = -1;
+		this.end = -1;
+	}
+
+	public Range(int start, int length) {
+		this.start = start;
+		this.end = start+length-1;
+	}
+
+	public int getLocation() {
+		return start;
+	}
+
+	public int getMaxRange() {
+		return end;
+	}
+
+	public int length() {
+		if (start == -1 || end == -1)
+			return 0;
+		return end - start + 1;
+	}
+	
+	public void decreseLength(int value){
+		start+=value;
+		if(start > end)
+			start = end = -1;
+	}
+}

@@ -1,0 +1,71 @@
+/*
+ * GPL v3
+ */
+
+package Bricklink.org.kleini.bricklink.api;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+
+import org.codehaus.jackson.JsonGenerationException;
+import org.codehaus.jackson.map.JsonMappingException;
+import org.codehaus.jackson.map.ObjectMapper;
+
+/**
+ * {@link Parameter}
+ * 
+ * @author <a href="mailto:himself@kleini.org">Marcus Klein</a>
+ */
+public class Parameter {	
+	public static final Parameter[] EMPTY = new Parameter[0];
+
+	private final String name;
+	private final String value;
+
+	public Parameter(String name, String value) {
+		super();
+		this.name = name;
+		this.value = value;
+	}
+
+	public Parameter(String name, int value) {
+		this(name, Integer.toString(value));
+	}
+
+	public Parameter(String name, Object value) {
+		ObjectMapper mapper = new ObjectMapper();
+		this.name = name;
+		String tempValue = "";
+
+		try {
+			tempValue = mapper.writeValueAsString(value);
+		} catch (JsonGenerationException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (JsonMappingException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		this.value = tempValue;
+	}
+
+	public Parameter(String name, char value) {
+		this(name, new String(new char[] { value }));
+	}
+
+	public Parameter(String name, boolean value) {
+		this(name, Boolean.toString(value));
+	}
+
+	public final String getName() {
+		return name;
+	}
+
+	public final String getValue() {
+		return value;
+	}
+}

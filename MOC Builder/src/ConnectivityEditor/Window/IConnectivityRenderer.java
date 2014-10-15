@@ -1,0 +1,21 @@
+package ConnectivityEditor.Window;
+
+import java.nio.FloatBuffer;
+
+import javax.media.opengl.GL2;
+
+import Builder.MainCamera;
+import Common.Vector3f;
+import Connectivity.IConnectivity;
+
+public interface IConnectivityRenderer{
+
+	float getLastHittedDistance();
+
+	boolean isHitted(MainCamera camera, float screenX,
+			float screenY, FloatBuffer distance);
+	void draw(GL2 gl2);
+
+	IConnectivity getConnectivity();
+
+}

@@ -1,0 +1,288 @@
+package ConnectivityEditor.Window;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import BrickControlGuide.BrickMovementGuideRenderer;
+import Builder.BuilderConfigurationManager;
+import Command.LDrawPart;
+import Common.Box2;
+import Common.Box3;
+import Common.Matrix4;
+import Common.Size2;
+import Common.Vector2f;
+import Common.Vector3f;
+import Connectivity.Axle;
+import Connectivity.Ball;
+import Connectivity.Connectivity;
+import Connectivity.ConnectivityTestResultT;
+import Connectivity.GlobalConnectivityManager;
+import Connectivity.Hinge;
+import Connectivity.ICustom2DField;
+import Connectivity.MatrixItem;
+import Connectivity.Slider;
+import ConnectivityEditor.ConnectivityControlGuide.ConnectivityMovementGuideRenderer;
+import LDraw.Support.MatrixMath;
+import Notification.LDrawPartSelect;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+import Window.MOCBuilder;
+
+public class ConnectivitySelectionManager {
+	private static ConnectivitySelectionManager _instance = null;
+
+	public synchronized static ConnectivitySelectionManager getInstance() {
+		if (_instance == null)
+			_instance = new ConnectivitySelectionManager();
+		return _instance;
+	}
+
+	private ConnectivityGroupForTransform selectedConnectivities = null;
+	private HashMap<Connectivity, Matrix4> startTransformMatrixMap = null;
+
+	private HashMap<Connectivity, Matrix4> initialTransformMatrixMap = null;
+	private ArrayList<Connectivity> connList;
+
+	private HashMap<Connectivity, ArrayList<Vector2f>> projectedConnectivityVerticesMap;
+
+	private ConnectivitySelectionManager() {
+		selectedConnectivities = new ConnectivityGroupForTransform();
+		startTransformMatrixMap = new HashMap<Connectivity, Matrix4>();
+		initialTransformMatrixMap = new HashMap<Connectivity, Matrix4>();
+		connList = new ArrayList<Connectivity>();
+		projectedConnectivityVerticesMap = new HashMap<Connectivity, ArrayList<Vector2f>>();
+	}
+
+	public void addConnectivity(Connectivity conn, boolean updateProjectionMap) {
+		synchronized (connList) {
+			connList.add(conn);
+		}
+		if (updateProjectionMap)
+			updateScreenProjectionVerticesMap(conn);
+	}
+
+	public void addConnectivityToSelection(Connectivity conn) {
+		addConnectivityToSelection(conn, true);
+	}
+
+	public void addConnectivityToSelection(Connectivity conn,
+			boolean updateConnectivityMatrix) {
+		synchronized (selectedConnectivities) {
+			if (selectedConnectivities.contains(conn) == false) {
+				selectedConnectivities.add(conn);
+				conn.setSelected(true);
+				startTransformMatrixMap.put(conn, conn.getTransformMatrix());
+				initialTransformMatrixMap.put(conn, conn.getTransformMatrix());
+				if (updateConnectivityMatrix) {
+					updateScreenProjectionVerticesMap(conn);
+				}
+			}
+		}
+	}
+
+	public void clearAllPart(boolean updateConnectivity) {
+		synchronized (selectedConnectivities) {
+			connList.clear();
+			selectedConnectivities.clear();
+			if (updateConnectivity) {
+				updateScreenProjectionVerticesMapAll();
+			}
+		}
+
+	}
+
+	public void clearSelection() {
+		clearSelection(true);
+	}
+
+	public void clearSelection(boolean updateConnectivityMatrix) {
+		if (isEmpty())
+			return;
+
+		synchronized (selectedConnectivities) {
+			for (Connectivity conn : selectedConnectivities
+					.getConnectivityList())
+				conn.setSelected(false);
+			selectedConnectivities.clear();
+		}
+
+		ConnectivityMovementGuideRenderer.getInstance().setConn(null);
+		updateScreenProjectionVerticesMapAll();
+	}
+
+	public boolean containsInSelection(Connectivity conn) {
+		boolean isContains = false;
+		synchronized (selectedConnectivities) {
+			isContains = selectedConnectivities.contains(conn);
+		}
+		return isContains;
+	}
+
+	public Matrix4 getInitialMoveTransformMatrix(Connectivity conn) {
+		if (initialTransformMatrixMap.containsKey(conn))
+			return initialTransformMatrixMap.get(conn);
+		return conn.getTransformMatrix();
+	}
+
+	public int getNumOfSelectedConns() {
+		return selectedConnectivities.size();
+	}
+
+	public ArrayList<Connectivity> getSelectedConnectivityList() {
+		synchronized (selectedConnectivities) {
+			ArrayList<Connectivity> copy = new ArrayList<Connectivity>(
+					selectedConnectivities.getConnectivityList());
+			return copy;
+		}
+	}
+
+	public Vector3f getSelectedPartsCenter() {
+		synchronized (selectedConnectivities) {
+			Vector3f retCenter = new Vector3f(0, 0, 0);
+			for (Connectivity conn : selectedConnectivities
+					.getConnectivityList()) {
+				Vector3f pos = new Vector3f(conn.getCurrentPos());
+
+				retCenter = retCenter.add(pos);
+			}
+			retCenter = retCenter.div((float) selectedConnectivities.size());
+
+			return retCenter;
+		}
+
+	}
+
+	public Matrix4 getStartMoveTransformMatrix(Connectivity conn) {
+		if (startTransformMatrixMap.containsKey(conn))
+			return startTransformMatrixMap.get(conn);
+		return conn.getTransformMatrix();
+	}
+
+	public boolean isEmpty() {
+		return selectedConnectivities.isEmpty();
+	}
+
+	public boolean isTheOnlySelectedConnectivity(Connectivity conn) {
+		boolean isTrue = false;
+		synchronized (selectedConnectivities) {
+			if (selectedConnectivities.size() == 1
+					&& selectedConnectivities.contains(conn))
+				isTrue = true;
+			return isTrue;
+		}
+
+	}
+
+	public void moveSelectedConnectivityBy(Connectivity pointingConn) {
+		selectedConnectivities.applyTransform(pointingConn,
+				pointingConn.getTransformMatrix());
+	}
+
+	public void remove(Connectivity conn) {
+		conn.setSelected(false);
+		synchronized (selectedConnectivities) {
+			selectedConnectivities.remove(conn);
+		}
+		synchronized (connList) {
+			connList.remove(conn);
+		}
+	}
+
+	public void removeFromSelection(Connectivity conn) {
+		removeFromSelection(conn, true);
+	}
+
+	public void removeFromSelection(Connectivity conn,
+			boolean updateConnectivity) {
+		synchronized (selectedConnectivities) {
+			if (selectedConnectivities.contains(conn) == true) {
+				conn.setSelected(false);
+				selectedConnectivities.remove(conn);
+				if (updateConnectivity) {
+					updateScreenProjectionVerticesMap(conn);
+				}
+			}
+		}
+
+	}
+
+	public void selectByDragging(Box2 bounds) {
+		long nano = System.nanoTime();
+		Vector2f origin = bounds.origin;
+		Size2 size = bounds.size;
+		float max_x, max_y;
+		max_x = origin.getX() + size.getWidth();
+		max_y = origin.getY() + size.getHeight();
+
+		for (Connectivity conn : connList) {
+			ArrayList<Vector2f> projectedVertices = projectedConnectivityVerticesMap
+					.get(conn);
+
+			if (projectedVertices == null)
+				continue;
+
+			boolean isIntersected = false;
+			for (Vector2f pos : projectedVertices) {
+				if (pos.getX() > origin.getX() && pos.getY() > origin.getY()
+						&& pos.getX() < max_x && pos.getY() < max_y) {
+					isIntersected = true;
+					break;
+				}
+			}
+			if (isIntersected == true)
+				addConnectivityToSelection(conn, false);
+			else
+				removeFromSelection(conn, false);
+		}
+		// System.out.println("selectByDragging: " + (System.nanoTime() -
+		// nano));
+	}
+
+	public void updateScreenProjectionVerticesMap(Connectivity conn) {
+		// System.out.println("updateScreenProjectionVerticesMap");
+		ArrayList<Vector3f> vertices = new ArrayList<Vector3f>();
+		if (conn instanceof ICustom2DField) {
+			MatrixItem[][] items = ((ICustom2DField) conn).getMatrixItem();
+			for (int column = 0; column < items.length; column++)
+				for (int row = 0; row < items[column].length; row++)
+					vertices.add(items[column][row].getCurrentPos());
+		} else {
+			vertices.add(conn.getCurrentPos());
+		}
+		ArrayList<Vector2f> projectedVertices = new ArrayList<Vector2f>();
+		for (Vector3f vertex : vertices) {
+			Vector2f pos = MOCBuilder.getInstance().getCamera()
+					.getWorldToScreenPos(vertex);
+			if (pos == null) {
+				projectedVertices.clear();
+				break;
+			}
+			projectedVertices.add(pos);
+		}
+		if (projectedVertices.size() != 0)
+			projectedConnectivityVerticesMap.put(conn, projectedVertices);
+	}
+
+	public void updateScreenProjectionVerticesMapAll() {
+		// System.out.println("updateScreenProjectionVerticesMap All");
+		ConnectivityEditor.getInstance().getCamera().tickle();
+		projectedConnectivityVerticesMap.clear();
+		for (Connectivity conn : connList) {
+			updateScreenProjectionVerticesMap(conn);
+		}
+	}
+
+	public void updateStartMoveTransformMatrixMap() {
+		// System.out.println("Updated");
+		synchronized (selectedConnectivities) {
+			for (Connectivity conn : selectedConnectivities
+					.getConnectivityList()) {
+				startTransformMatrixMap.put(conn, conn.getTransformMatrix());
+			}
+		}
+	}
+
+	public ConnectivityGroupForTransform getBrickGroupForTransform() {
+		return selectedConnectivities;
+	}
+}

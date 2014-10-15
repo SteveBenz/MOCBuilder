@@ -1,0 +1,615 @@
+package LDraw.Support;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.TreeSet;
+
+import Command.LDrawColor;
+import Command.LDrawColorT;
+import Command.LDrawLSynth;
+import Command.LDrawLine;
+import Command.LDrawPart;
+import Command.LDrawQuadrilateral;
+import Command.LDrawTexture;
+import Command.LDrawTriangle;
+import Command.PartTypeT;
+import Common.Box3;
+import Common.Vector3f;
+import LDraw.Files.LDrawModel;
+import LDraw.Files.LDrawStep;
+import LDraw.Support.type.ViewOrientationT;
+
+public class LDrawUtilities {
+
+	private static LDrawVertices boundingCube = null;
+	private static boolean ColumnizesOutput = false;
+	private static String defaultAuthor = "anonymous";
+
+	// ---------- angleForViewOrientation:
+	// --------------------------------[static]--
+	//
+	// Purpose: Returns the viewing angle in degrees for the given orientation.
+	//
+	// ------------------------------------------------------------------------------
+
+	public static Vector3f angleForViewOrientation(ViewOrientationT orientation) {
+		Vector3f angle = Vector3f.getZeroVector3f();
+
+		switch (orientation) {
+		case ViewOrientationWalkThrough:
+			angle = MatrixMath.V3Make(0, 0, 0);
+			break;
+
+		case ViewOrientation3D:
+			// This is MLCad's default 3-D viewing angle, which is arrived at by
+			// applying these rotations in order: z=0, y=45, x=23.
+			angle = MatrixMath.V3Make(30.976f, 40.609f, 21.342f);
+			break;
+
+		case ViewOrientationFront:
+			angle = MatrixMath.V3Make(0, 0, 0);
+			break;
+
+		case ViewOrientationBack:
+			angle = MatrixMath.V3Make(0, 180, 0);
+			break;
+
+		case ViewOrientationLeft:
+			angle = MatrixMath.V3Make(0, -90, 0);
+			break;
+
+		case ViewOrientationRight:
+			angle = MatrixMath.V3Make(0, 90, 0);
+			break;
+
+		case ViewOrientationTop:
+			angle = MatrixMath.V3Make(90, 0, 0);
+			break;
+
+		case ViewOrientationBottom:
+			angle = MatrixMath.V3Make(-90, 0, 0);
+			break;
+		}
+
+		return angle;
+
+	}
+
+	// ---------- stringFromFile:
+	// -----------------------------------------[static]--
+	//
+	// Purpose: Reads the contents of the file at the given path into a string.
+	//
+	// ------------------------------------------------------------------------------
+	@SuppressWarnings("resource")
+	public static String stringFromFile(String path) {
+		BufferedReader bufferedReader = null;
+		try {
+			bufferedReader = new BufferedReader(new FileReader(new File(path)));
+			StringBuilder sb = new StringBuilder();
+			String line;
+			while ((line = bufferedReader.readLine()) != null)
+				sb.append(line + "\n");
+
+			return sb.toString();
+		} catch (Exception e) {
+
+		}
+		return null;
+
+	}// end stringFromFile:
+
+	public static Box3 boundingBox3ForDirectives(
+			ArrayList<LDrawDirective> directives) {
+		Box3 bounds = Box3.getInvalidBox();
+		Box3 partBounds = Box3.getInvalidBox();
+		LDrawDirective currentDirective = null;
+		int numberOfDirectives = directives.size();
+		int counter = 0;
+
+		for (counter = 0; counter < numberOfDirectives; counter++) {
+			currentDirective = directives.get(counter);
+			{
+				partBounds = currentDirective.boundingBox3();
+				bounds = MatrixMath.V3UnionBox(bounds, partBounds);
+			}
+		}
+
+		return bounds;
+
+	}
+
+	public static String defaultAuthor() {
+		// TODO Auto-generated method stub
+		return "anonymous";
+	}
+
+	// ---------- readNextField:remainder:
+	// --------------------------------[static]--
+	//
+	// Purpose: Given the portion of the LDraw line, read the first available
+	// field. Fields are separated by whitespace of any length.
+	//
+	// If remainder is not NULL, return by indirection the remainder of
+	// partialDirective after the first field has been removed. If
+	// there is no remainder, an empty string will be returned.
+	//
+	// So, given the line
+	// 1 8 -150 -8 20 0 0 -1 0 1 0 1 0 0 3710.DAT
+	//
+	// remainder will be set to:
+	// 8 -150 -8 20 0 0 -1 0 1 0 1 0 0 3710.DAT
+	//
+	// Notes: This method is incapable of reading field strings with spaces
+	// in them!
+	//
+	// A case could be made to replace this method with an NSScanner!
+	// They don't seem to be as adept at scanning in unknown string
+	// tags though, which would make them difficult to use to
+	// distinguish between "0 WRITE blah" and "0 COMMENT blah".
+	//
+	// ------------------------------------------------------------------------------
+
+	// public static String readNextField(ByteBuffer workingLine) {
+	// String partialDirective;
+	// int position = workingLine.position();
+	// byte[] strTemp = new byte[workingLine.remaining()];
+	// workingLine.get(strTemp);
+	// partialDirective = new String(strTemp);
+	// workingLine.position(position);
+	//
+	// Range rangeOfNextWhiteSpace;
+	// String fieldContents = null;
+	//
+	// // First, remove any heading whitespace.
+	// partialDirective = partialDirective.trim();
+	// // Find the beginning of the next field separation
+	// rangeOfNextWhiteSpace = new Range(partialDirective.indexOf(" "),
+	// partialDirective.length());
+	//
+	// // The text between the beginning and the next field separator is the
+	// // first field (what we are after).
+	// if (rangeOfNextWhiteSpace.getLocation() != -1) {
+	// fieldContents = partialDirective.substring(0,
+	// rangeOfNextWhiteSpace.getLocation());
+	// // See if they want the rest of the line, sans the field we just
+	// // parsed.
+	// if (workingLine != null) {
+	// workingLine.position(position+rangeOfNextWhiteSpace.getLocation()+1);
+	// }
+	//
+	// } else {
+	// // There was no subsequent field separator; we must be at the end of
+	// // the line.
+	// fieldContents = partialDirective;
+	// if (workingLine != null) {
+	// workingLine.position(workingLine.capacity());
+	// // while (workingLine.remaining() > 0)
+	// // workingLine.get();
+	// }
+	// }
+	//
+	// return fieldContents;
+	//
+	// }
+
+	public static boolean isLDrawFilenameValid(String acceptableName) {
+		boolean isValid = false;
+
+		if (acceptableName == null)
+			return false;
+		int indexOfDot = acceptableName.lastIndexOf(".");
+		if (indexOfDot == -1)
+			return false;
+		if (indexOfDot == 0)
+			return false;
+
+		String ext = acceptableName.substring(indexOfDot + 1,
+				acceptableName.length()).toLowerCase();
+		if (ext.equals("ldr"))
+			isValid = true;
+		if (ext.equals("dat"))
+			isValid = true;
+
+		return isValid;
+	}
+
+	// ---------- classForDirectiveBeginningWithLine:
+	// ---------------------[static]--
+	//
+	// Purpose: Allows initializing the right kind of class based on the code
+	// found at the beginning of an LDraw line.
+	//
+	// ------------------------------------------------------------------------------
+	public static LDrawDirective classForDirectiveBeginningWithLine(String line) {
+		LDrawDirective classForType = null;
+		String[] commandCodeStrings = null;
+		char lineType = 0;
+
+		// commandCodeString = LDrawUtilities.readNextField(ByteBuffer.wrap(line
+		// .getBytes()));
+		// commandCodeString = new StringTokenizer(line).nextToken(" ");
+		commandCodeStrings = line.split("\\s+");
+		for (String code : commandCodeStrings) {
+			if (!"".equals(code)) {
+				lineType = code.charAt(0);
+				break;
+			}
+		}
+
+		// We may need to check for null here someday.
+
+		// The linecode (0, 1, 2, 3, 4, 5) identifies the type of command, and
+		// is
+		// always the first character in the line.
+
+		switch (lineType) {
+		case '0': {
+			if (LDrawTexture.lineIsTextureBeginning(line))
+				classForType = new LDrawTexture();
+			else if (LDrawLSynth.lineIsLSynthBeginning(line)) {
+				classForType = new LDrawLSynth();
+			} else
+				classForType = new LDrawMetaCommand();
+		}
+			break;
+		case '1':
+			classForType = new LDrawPart();
+			break;
+		case '2':
+			classForType = new LDrawLine();
+			break;
+		case '3':
+			classForType = new LDrawTriangle();
+			break;
+		case '4':
+			classForType = new LDrawQuadrilateral();
+			break;
+		case '5':
+			classForType = new LDrawConditionalLine();
+			break;
+		default:
+			System.out.println(String.format(
+					"unrecognized LDraw line type: %s", lineType));
+		}
+
+		return classForType;
+
+	}
+
+	// ---------- parseColorFromField:
+	// ------------------------------------[static]--
+	//
+	// Purpose: Returns the color code which is represented by the field.
+	//
+	// Notes: This supports a nonstandard but fairly widely-supported
+	// extension which allows arbitrary RGB values to be specified in
+	// place of color codes. (MLCad, L3P, LDView, and others support
+	// this.)
+	//
+	// ------------------------------------------------------------------------------
+
+	public static LDrawColor parseColorFromField(String colorField) {
+		LDrawColorT colorCode = LDrawColorT.LDrawColorBogus;
+		int customCodeType = 0;
+		float components[] = new float[4];
+		LDrawColor color = null;
+
+		// Custom RGB?
+		if (colorField.contains("0x") == true) {
+			// The integer should be of the format:
+			// 0x2RRGGBB for opaque colors
+			// 0x3RRGGBB for transparent colors
+			// 0x4RGBRGB for a dither of two 12-bit RGB colors
+			// 0x5RGBxxx as a dither of one 12-bit RGB color with clear (for
+			// transparency).
+
+			customCodeType = Integer.parseInt("" + colorField.charAt(2));
+			String hexStr = colorField.substring(3, 9);
+			LDrawColor.scanHexString(hexStr, components);
+
+			// todo
+			switch (customCodeType) {
+			// Solid color
+			case 2:
+				// components[0] = Integer.parseInt("" + hexBytes[2], 16) /
+				// 255.0f; // Red
+				// components[1] = Integer.parseInt("" + hexBytes[1], 16) /
+				// 255.0f; // Green
+				// components[2] = Integer.parseInt("" + hexBytes[0], 16) /
+				// 255.0f; // Blue
+				components[3] = (float) 1.0; // alpha
+				break;
+
+			// Transparent color
+			case 3:
+				// components[0] = Integer.parseInt("" + hexBytes[2], 16) /
+				// 255.0f; // Red
+				// components[1] = Integer.parseInt("" + hexBytes[1], 16) /
+				// 255.0f; // Green
+				// components[2] = Integer.parseInt("" + hexBytes[0], 16) /
+				// 255.0f; // Blue
+				components[3] = (float) 0.5; // alpha
+				break;
+
+			// combined opaque color
+			case 4:
+				// components[0] = (float) (((hexBytes >> 5*4) & 0xF) +
+				// ((hexBytes >> 2*4) & 0xF))/2 / 255; // Red
+				// components[0] = (float) (((hexBytes >> 4*4) & 0xF) +
+				// ((hexBytes >> 1*4) & 0xF))/2 / 255; // Green
+				// components[0] = (float) (((hexBytes >> 3*4) & 0xF) +
+				// ((hexBytes >> 0*4) & 0xF))/2 / 255; // Blue
+				components[3] = (float) 1.0; // alpha
+				break;
+
+			// bad-looking transparent color
+			case 5:
+				// components[0] = (float) ((hexBytes >> 5*4) & 0xF) / 15; //
+				// Red
+				// components[0] = (float) ((hexBytes >> 4*4) & 0xF) / 15; //
+				// Green
+				// components[0] = (float) ((hexBytes >> 3*4) & 0xF) / 15; //
+				// Blue
+				components[3] = (float) 0.5; // alpha
+				break;
+
+			default:
+				break;
+			}
+
+			color = new LDrawColor();
+			color.setColorCode(LDrawColorT.LDrawColorCustomRGB);
+			color.setEdgeColorCode(LDrawColorT.LDrawBlack);
+			color.setColorRGBA(components);
+		} else {
+			// Regular, standards-compliant LDraw color code
+			int colorCodeValue = Integer.parseInt(colorField);
+			for (LDrawColorT colorT : LDrawColorT.values())
+				if (colorT.getValue() == colorCodeValue) {
+					colorCode = colorT;
+					break;
+				}
+			color = ColorLibrary.sharedColorLibrary().colorForCode(colorCode);
+
+			if (color == null) {
+				// This is probably a file-local color. Or a file from the
+				// future.
+				color = new LDrawColor();
+				color.setColorCode(colorCode);
+				color.setEdgeColorCode(LDrawColorT.LDrawBlack);
+			}
+		}
+
+		return color;
+
+	}
+
+	public static String outputStringForColor(LDrawColor color) {
+		String outputString = null;
+		float components[] = new float[4];
+		LDrawColorT colorCode = LDrawColorT.LDrawColorBogus;
+
+		colorCode = color.colorCode();
+		color.getColorRGBA(components);
+
+		if (colorCode == LDrawColorT.LDrawColorCustomRGB) {
+			// Opaque?
+			if (components[3] == 1.0f) {
+				outputString = String.format("0x2%02X%02X%02X",
+						(components[0] * 255), (components[1] * 255),
+						(components[2] * 255));
+			} else {
+				outputString = String.format("0x3%02X%02X%02X",
+						(components[0] * 255), (components[1] * 255),
+						(components[2] * 255));
+			}
+		} else {
+			if (ColumnizesOutput == true) {
+				outputString = String.format("%3d", colorCode.getValue());
+			} else {
+				outputString = String.format("%d", colorCode.getValue());
+			}
+
+		}
+
+		return outputString;
+	}
+
+	public static String outputStringForFloat(float f) {
+		return String.format("%.3f",
+				Math.round(f / LDrawGlobalFlag.DecimalPoint)
+						* LDrawGlobalFlag.DecimalPoint);
+	}
+
+	// ---------- boundingCube
+	// --------------------------------------------[static]--
+	//
+	// Purpose: Returns a drawable unit cube which may be scaled to render
+	// bounding boxes using optimized OpenGL code.
+	//
+	// ------------------------------------------------------------------------------
+
+	public static LDrawVertices boundingCube() {
+		if (boundingCube == null) {
+			// Create it for the first time.
+			// It's easiest to co-opt existing LDraw objects for this.
+			boundingCube = new LDrawVertices();
+
+			LDrawColor currentColor = ColorLibrary.sharedColorLibrary()
+					.colorForCode(LDrawColorT.LDrawCurrentColor);
+			Vector3f vertices[] = { MatrixMath.V3Make(0, 0, 0),
+					MatrixMath.V3Make(0, 0, 1), MatrixMath.V3Make(0, 1, 1),
+					MatrixMath.V3Make(0, 1, 0),
+
+					MatrixMath.V3Make(1, 0, 0), MatrixMath.V3Make(1, 0, 1),
+					MatrixMath.V3Make(1, 1, 1), MatrixMath.V3Make(1, 1, 0), };
+
+			LDrawQuadrilateral side0 = new LDrawQuadrilateral();
+			LDrawQuadrilateral side1 = new LDrawQuadrilateral();
+			LDrawQuadrilateral side2 = new LDrawQuadrilateral();
+			LDrawQuadrilateral side3 = new LDrawQuadrilateral();
+			LDrawQuadrilateral side4 = new LDrawQuadrilateral();
+			LDrawQuadrilateral side5 = new LDrawQuadrilateral();
+
+			side0.setLDrawColor(currentColor);
+			side1.setLDrawColor(currentColor);
+			side2.setLDrawColor(currentColor);
+			side3.setLDrawColor(currentColor);
+			side4.setLDrawColor(currentColor);
+			side5.setLDrawColor(currentColor);
+
+			side0.setVertex1(vertices[0]);
+			side0.setVertex2(vertices[3]);
+			side0.setVertex3(vertices[2]);
+			side0.setVertex4(vertices[1]);
+
+			side1.setVertex1(vertices[0]);
+			side1.setVertex2(vertices[4]);
+			side1.setVertex3(vertices[7]);
+			side1.setVertex4(vertices[3]);
+
+			side2.setVertex1(vertices[3]);
+			side2.setVertex2(vertices[7]);
+			side2.setVertex3(vertices[6]);
+			side2.setVertex4(vertices[2]);
+
+			side3.setVertex1(vertices[2]);
+			side3.setVertex2(vertices[6]);
+			side3.setVertex3(vertices[5]);
+			side3.setVertex4(vertices[1]);
+
+			side4.setVertex1(vertices[1]);
+			side4.setVertex2(vertices[5]);
+			side4.setVertex3(vertices[4]);
+			side4.setVertex4(vertices[0]);
+
+			side5.setVertex1(vertices[4]);
+			side5.setVertex2(vertices[5]);
+			side5.setVertex3(vertices[6]);
+			side5.setVertex4(vertices[7]);
+
+			boundingCube.addQuadrilateral(side0);
+			boundingCube.addQuadrilateral(side1);
+			boundingCube.addQuadrilateral(side2);
+			boundingCube.addQuadrilateral(side3);
+			boundingCube.addQuadrilateral(side4);
+			boundingCube.addQuadrilateral(side5);
+		}
+
+		return boundingCube;
+
+	}
+
+	public static void registerHitForObject(LDrawDirective hitObject,
+			FloatBuffer hitDepth, LDrawDirective creditObject,
+			HashMap<LDrawDirective, Float> hits) {
+
+		Float existingRecord = null;
+		if (hits.containsKey(creditObject))
+			existingRecord = hits.get(creditObject);
+		float existingDepth = 0;
+		LDrawDirective key = null;
+
+		// NSDictionary copies its keys (which we don't want to do!), so we'll
+		// just
+		// wrap the pointers.
+		if (creditObject == null) {
+			key = hitObject;
+		} else {
+			key = creditObject;
+		}
+		if (hits.containsKey(key))
+			existingRecord = hits.get(key);
+		if (existingRecord == null) {
+			existingDepth = Float.POSITIVE_INFINITY;
+		} else {
+			existingDepth = existingRecord.floatValue();
+		}
+
+		// Found a shallower intersection point? Record the hit.
+		if (hitDepth.get(0) < existingDepth) {
+			hits.put(key, new Float(hitDepth.get(0)));
+		}
+
+	}
+
+	public static void registerHitForObject(LDrawDirective hitObject,
+			LDrawDirective creditObject, TreeSet<LDrawDirective> hits) {
+		LDrawDirective key = null;
+
+		if (creditObject == null) {
+			key = hitObject;
+		} else {
+			key = creditObject;
+		}
+
+		hits.add(key);
+
+	}
+
+	public static String excludeExtensionFromPartName(String partName) {
+		if (partName == null)
+			return partName;
+		int lastIndexOfDot = partName.lastIndexOf(".");
+		if (lastIndexOfDot == -1)
+			return partName;
+		else
+			return partName.substring(0, lastIndexOfDot);
+	}
+	
+	public static String excludePatternWithoutExtension(String partName) {
+		String result = "";
+
+		for (int i = 0; i < partName.length(); i++) {
+			if (Character.isDigit(partName.charAt(i)))
+				continue;
+			if (partName.charAt(i) == 'a' || partName.charAt(i) == 'b')
+				continue;
+			result = partName.substring(0, i);
+			break;
+		}
+		return result;
+	}
+
+	public static String excludePattern(String partName) {
+		String result = "";
+
+		for (int i = 0; i < partName.length(); i++) {
+			if (Character.isDigit(partName.charAt(i)))
+				continue;
+			if (partName.charAt(i) == 'a' || partName.charAt(i) == 'b')
+				continue;
+			result = partName.substring(0, i) + ".dat";
+			break;
+		}
+		return result;
+	}
+
+	public static ArrayList<LDrawPart> extractLDrawPartListModel(
+			LDrawModel ldrModel, boolean extractMPD) {
+		if (ldrModel == null)
+			return null;
+		ArrayList<LDrawPart> retList = new ArrayList<LDrawPart>();
+		for (LDrawStep step : ldrModel.steps()) {
+			for (LDrawDirective directive : step.subdirectives()) {
+				if (directive instanceof LDrawPart) {
+					LDrawPart part = (LDrawPart) directive;
+					if (extractMPD == true
+							&& part.getCacheType() == PartTypeT.PartTypeSubmodel) {
+						ArrayList<LDrawPart> tempList = extractLDrawPartListModel(
+								part.getCacheModel(), extractMPD);
+						if (tempList != null)
+							retList.addAll(tempList);
+					} else
+						retList.add(part);
+				}
+			}
+		}
+		return retList;
+	}
+}

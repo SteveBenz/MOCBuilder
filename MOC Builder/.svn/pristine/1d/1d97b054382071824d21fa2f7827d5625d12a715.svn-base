@@ -1,0 +1,26 @@
+/*
+ * GPLv3
+ */
+
+package Bricklink.BrickBuilder.api.CompatibleInfo;
+
+import java.util.List;
+
+import Bricklink.BrickBuilder.data.IDMappingDT;
+import Bricklink.org.kleini.bricklink.api.Response;
+import Bricklink.org.kleini.bricklink.data.ResponseDT;
+
+
+
+/**
+ * {@link UpdateCompatibleColorResponse}
+ * 
+ * @author <a href="mailto:himself@kleini.org">Marcus Klein</a>
+ */
+public class UpdateCompatibleColorResponse extends Response<String> {
+
+	protected UpdateCompatibleColorResponse(
+			ResponseDT<String> response) {
+		super(response);
+	}
+}

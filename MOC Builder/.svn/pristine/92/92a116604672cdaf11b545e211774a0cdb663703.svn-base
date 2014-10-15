@@ -1,0 +1,61 @@
+package Notification;
+
+import java.util.ArrayList;
+import java.util.Hashtable;
+
+public class NotificationCenter {
+	private static NotificationCenter _instance = null;
+
+	private Hashtable<NotificationMessageT, ArrayList<ILDrawSubscriber>> subscriberList;
+
+	private NotificationCenter() {
+		subscriberList = new Hashtable<NotificationMessageT, ArrayList<ILDrawSubscriber>>();
+	}
+
+	public static synchronized NotificationCenter getInstance() {
+		if (_instance == null)
+			_instance = new NotificationCenter();
+
+		return _instance;
+	}
+
+	public void addSubscriber(ILDrawSubscriber subscriber,
+			NotificationMessageT notificationMessageType) {
+		synchronized (this) {
+			if (subscriberList.containsKey(notificationMessageType) == false) {
+				subscriberList.put(notificationMessageType,
+						new ArrayList<ILDrawSubscriber>());
+			}
+			ArrayList<ILDrawSubscriber> temp = subscriberList
+					.get(notificationMessageType);
+			if (temp.contains(subscriber) == false)
+				temp.add(subscriber);
+		}
+	}
+
+	public void removeSubscriber(ILDrawSubscriber subscriber,
+			NotificationMessageT notificationMessageType) {
+		synchronized (this) {
+
+			if (subscriberList.containsKey(notificationMessageType) == false)
+				return;
+			ArrayList<ILDrawSubscriber> temp = subscriberList
+					.get(notificationMessageType);
+			if (temp.contains(subscriber) == true)
+				temp.remove(subscriber);
+		}
+	}
+
+	public void postNotification(NotificationMessageT notificationType, INotificationMessage message) {
+//		System.out.println(notificationType);
+		if (subscriberList.containsKey(notificationType) == false)
+			return;
+		ArrayList<ILDrawSubscriber> temp = subscriberList.get(notificationType);
+		for (ILDrawSubscriber subc : temp)
+			subc.receiveNotification(notificationType, message);
+	}
+	
+	public void postNotification(NotificationMessageT notificationType) {
+		postNotification(notificationType, null);
+	}
+}

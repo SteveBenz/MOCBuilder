@@ -1,0 +1,337 @@
+package Exports;
+
+import java.util.HashMap;
+import java.util.Map.Entry;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.BusyIndicator;
+import org.eclipse.swt.events.ModifyEvent;
+import org.eclipse.swt.events.ModifyListener;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.graphics.Color;
+import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Canvas;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Listener;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Table;
+import org.eclipse.swt.widgets.TableColumn;
+import org.eclipse.swt.widgets.TableItem;
+import org.eclipse.swt.widgets.Text;
+
+import Color.BricklinkColorT;
+import Command.LDrawColor;
+import Command.LDrawColorT;
+import LDraw.Support.ColorLibrary;
+import Window.BackgroundThreadManager;
+import Window.MOCBuilder;
+import Window.BrickViewer;
+import Window.ProgressDlg;
+
+public class ColorMappingInfoComposite extends Composite {
+
+	public static void main(String args[]) {
+		MOCBuilder.getInstance();
+		Display display = Display.getDefault();
+		new UpdateManagerDlg(new Shell(display), SWT.NO_TRIM).open();
+	}
+
+	private Table table;
+	private BrickViewer brickViewer;
+	private Canvas canvas_Ldraw;
+	private Canvas canvas_Bricklink;
+	private boolean showMatchedItem = false;
+	private Text text_Search;
+
+	/**
+	 * Create the composite.
+	 * 
+	 * @param parent
+	 * @param style
+	 */
+	public ColorMappingInfoComposite(Composite parent, int style) {
+		super(parent, style);
+		setLocation(0, 0);
+		setSize(780, 560);
+
+		createContents();
+	}
+
+	@Override
+	protected void checkSubclass() {
+		// Disable the check that prevents subclassing of SWT components
+	}
+
+	private void createContents() {
+
+		table = new Table(this, SWT.BORDER | SWT.FULL_SELECTION | SWT.V_SCROLL
+				| SWT.H_SCROLL | SWT.MULTI);
+		table.setLocation(10, 42);
+		table.setSize(595, 459);
+		table.setHeaderVisible(true);
+		table.setLinesVisible(true);
+
+		final Button btnCheck_HideMatchedItem = new Button(this, SWT.CHECK);
+		btnCheck_HideMatchedItem.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent arg0) {
+				showMatchedItem = !btnCheck_HideMatchedItem.getSelection();
+				BusyIndicator.showWhile(getParent().getDisplay(), new Thread(
+						new Runnable() {
+							@Override
+							public void run() {
+								updateTable(showMatchedItem);
+							}
+						}));
+			}
+		});
+		btnCheck_HideMatchedItem.setBounds(622, 20, 128, 16);
+		btnCheck_HideMatchedItem.setText("Hide Updated items");
+		btnCheck_HideMatchedItem.setSelection(true);
+
+		canvas_Ldraw = new Canvas(this, SWT.NONE);
+		canvas_Ldraw.setBounds(622, 74, 128, 97);
+
+		Label lblLdraw = new Label(this, SWT.NONE);
+		lblLdraw.setBounds(621, 53, 55, 15);
+		lblLdraw.setText("LDraw");
+
+		Label lblBricklink = new Label(this, SWT.NONE);
+		lblBricklink.setText("Bricklink");
+		lblBricklink.setBounds(621, 192, 55, 15);
+
+		canvas_Bricklink = new Canvas(this, SWT.NONE);
+		canvas_Bricklink.setBounds(622, 213, 128, 97);
+
+		text_Search = new Text(this, SWT.BORDER);
+		text_Search.setBounds(10, 15, 105, 21);
+
+		text_Search.addModifyListener(new ModifyListener() {
+			@Override
+			public void modifyText(ModifyEvent arg0) {
+				String keyword = text_Search.getText();
+				if (keyword == null)
+					return;
+				System.out.println(keyword);
+				updateTableWithKeyword(keyword, showMatchedItem);
+			}
+		});
+
+		Button btnUpdateAll = new Button(this, SWT.NONE);
+		btnUpdateAll.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent arg0) {
+				handleUpdateAll();
+			}
+		});
+		btnUpdateAll.setBounds(258, 523, 235, 45);
+		btnUpdateAll.setText("Update All");
+
+		createTable();
+		addSelectionListener();
+	}
+
+	protected void handleUpdateAll() {
+		CompatiblePartManager.getInstance().loadColorMappingInfo_BrickLink();
+		CompatiblePartManager.getInstance().writeMappingListToFileCache();
+		
+		BackgroundThreadManager.getInstance().add(new Runnable(){
+			@Override
+			public void run() {
+				Display.getDefault().asyncExec(new Runnable(){
+
+					@Override
+					public void run() {
+						createTable();
+					}
+				});
+			}
+		});
+		
+		if(BackgroundThreadManager.getInstance().sizeOfThread()!=0)
+			new ProgressDlg(getShell(), SWT.NONE).open();
+	}
+
+	protected void updateTableWithKeyword(String keyword, boolean showMappedItem) {
+		table.setRedraw(false);
+		table.removeAll();
+		String[] titles = { "Index", "From Color", "From Domain", "To Color",
+				"To Domain", "State" };
+		for (int loopIndex = 0; loopIndex < titles.length; loopIndex++) {
+			TableColumn column = new TableColumn(table, SWT.NULL);
+			column.setText(titles[loopIndex]);
+		}
+
+		HashMap<Integer, Integer> colorMappingInfoMapFromLDraw_server = UpdateManager.getInstance().getColorMappingInfoMapFromLDraw();
+		HashMap<Integer, Integer> colorMappingInfoMapFromBricklink_server = UpdateManager.getInstance().getColorMappingInfoMapFromBricklink();
+		HashMap<Integer, Integer> colorMappingInfoMapFromLDraw_local = new HashMap<Integer, Integer>();
+		HashMap<Integer, Integer> colorMappingInfoMapFromBricklink_local = new HashMap<Integer, Integer>();
+		
+		// obtain all id mapping info from local
+		HashMap<Integer, PartColors> compatiblePartColorsMap = CompatiblePartManager
+				.getInstance().getAllColorsInDomain(PartDomainT.LDRAW);
+		for (Entry<Integer, PartColors> entry : compatiblePartColorsMap.entrySet()) {
+			Integer colorId = (Integer) entry.getKey();
+			PartColors colors = entry.getValue();
+			Integer bricklinkId = null;
+			if (colors != null)
+				bricklinkId = colors.getColorId(PartDomainT.BRICKLINK);
+			else
+				continue;
+			colorMappingInfoMapFromLDraw_local.put(colorId, bricklinkId);
+		}
+		
+		compatiblePartColorsMap = CompatiblePartManager
+				.getInstance().getAllColorsInDomain(PartDomainT.BRICKLINK);
+		for (Entry<Integer, PartColors> entry : compatiblePartColorsMap.entrySet()) {
+			Integer colorId = (Integer) entry.getKey();
+			PartColors colors = entry.getValue();
+			Integer ldrawkId = null;
+			if (colors != null)
+				ldrawkId = colors.getColorId(PartDomainT.LDRAW);
+			else
+				continue;
+			colorMappingInfoMapFromBricklink_local.put(colorId, ldrawkId);
+		}
+
+		int index = 0;
+		String state = "New";
+		for (Entry<Integer, Integer> entry : colorMappingInfoMapFromLDraw_server
+				.entrySet()) {
+
+			Integer bricklinkId_local = colorMappingInfoMapFromLDraw_local
+					.get(entry.getKey());
+			if (bricklinkId_local != null) {
+				if (bricklinkId_local.equals(entry.getValue())) {
+					state = "Updated";
+					if (showMatchedItem == false)
+						continue;
+				}else
+					state = "Modified";
+			}else
+				state = "New";
+
+			final TableItem item = new TableItem(table, SWT.NULL);
+			item.setText(0, "" + index);
+			item.setText(1, LDrawColorT.byValue(entry.getKey()).toString());
+			item.setText(2, "Ldraw");
+			item.setText(3, BricklinkColorT.byValue(entry.getValue()).toString());
+			item.setText(4, "Bricklink");
+			item.setText(5, state);
+			if(state.equals("New"))
+			item.setBackground(Display.getDefault().getSystemColor(
+					SWT.COLOR_CYAN));
+			if(state.equals("Modified"))
+				item.setBackground(Display.getDefault().getSystemColor(
+						SWT.COLOR_MAGENTA));
+			
+			PartColors colors = new PartColors();
+			colors.setColorId(PartDomainT.LDRAW, entry.getKey());
+			colors.setColorId(PartDomainT.BRICKLINK, entry.getValue());
+			item.setData(colors);
+			index++;
+		}
+		
+		for (Entry<Integer, Integer> entry : colorMappingInfoMapFromBricklink_server
+				.entrySet()) {
+			Integer ldrawId_local = colorMappingInfoMapFromBricklink_local
+					.get(entry.getKey());
+			if (ldrawId_local != null) {
+				if (ldrawId_local.equals(entry.getValue())) {
+					state = "Updated";
+					if (showMatchedItem == false)
+						continue;
+				}else
+					state = "Modified";
+			}else
+				state = "New";
+
+			final TableItem item = new TableItem(table, SWT.NULL);
+			item.setText(0, "" + index);
+			item.setText(1, BricklinkColorT.byValue(entry.getKey()).toString());
+			item.setText(2, "Bricklink");
+			item.setText(3, LDrawColorT.byValue(entry.getValue()).toString());
+			item.setText(4, "Ldraw");
+			item.setText(5, state);
+			if(state.equals("New"))
+			item.setBackground(Display.getDefault().getSystemColor(
+					SWT.COLOR_CYAN));
+			if(state.equals("Modified"))
+				item.setBackground(Display.getDefault().getSystemColor(
+						SWT.COLOR_MAGENTA));
+			
+			PartColors colors = new PartColors();
+			colors.setColorId(PartDomainT.BRICKLINK, entry.getKey());
+			colors.setColorId(PartDomainT.LDRAW, entry.getValue());
+			item.setData(colors);
+			index++;
+		}
+
+		for (int loopIndex = 0; loopIndex < titles.length; loopIndex++) {
+			table.getColumn(loopIndex).pack();
+		}
+		table.setRedraw(true);
+		table.setVisible(true);
+
+	}
+
+	private void addSelectionListener() {
+		table.addListener(SWT.MouseDown, new Listener() {
+			public void handleEvent(Event event) {
+				Point pt = new Point(event.x, event.y);
+				final TableItem item = table.getItem(pt);
+				if (item != null) {					
+					final PartColors colors = (PartColors) item.getData();
+					updateLDrawColor(colors.getColorId(PartDomainT.LDRAW));
+					updateBricklinkColor(colors.getColorId(PartDomainT.BRICKLINK));
+				}
+			}
+		});
+	}
+	
+	private void updateTable(boolean showMappedItem) {
+		updateTableWithKeyword(null, showMappedItem);
+	}
+
+	private void createTable() {
+		updateTable(showMatchedItem);
+	}
+	
+	private void updateLDrawColor(Integer colorId) {
+		canvas_Ldraw.setBackground(null);
+		if (colorId == null)
+			return;
+
+		LDrawColor ldrawColor = ColorLibrary.sharedColorLibrary().colorForCode(
+				LDrawColorT.byValue(colorId));
+		float rgba[] = new float[4];
+		ldrawColor.getColorRGBA(rgba);
+		Color color = new Color(Display.getCurrent(), (int) (255 * rgba[0]),
+				(int) (255 * rgba[1]), (int) (255 * rgba[2]));
+		canvas_Ldraw.setBackground(color);
+	}
+
+	private void updateBricklinkColor(Integer colorId) {
+		canvas_Bricklink.setBackground(null);
+		if (colorId == null)
+			return;
+		BricklinkColorT bricklinkColor = BricklinkColorT.byValue(colorId);
+		if (bricklinkColor == null)
+			return;
+
+		int rgb[] = new int[3];
+		String colorCode = bricklinkColor.getColorCode();
+		if(colorCode==null || colorCode.length()!=6)return;
+		
+		rgb[0] = Integer.parseInt(colorCode.substring(0, 2), 16);
+		rgb[1] = Integer.parseInt(colorCode.substring(2, 4), 16);
+		rgb[2] = Integer.parseInt(colorCode.substring(4), 16);
+		Color color = new Color(Display.getCurrent(), rgb[0], rgb[1], rgb[2]);
+		canvas_Bricklink.setBackground(color);
+	}
+}

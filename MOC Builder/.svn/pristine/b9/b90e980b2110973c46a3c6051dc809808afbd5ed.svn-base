@@ -1,0 +1,399 @@
+package LDraw.Support;
+
+import java.io.File;
+import java.util.ArrayList;
+
+import LDraw.Support.type.LDrawDomainT;
+
+public class LDrawPaths {
+	// //////////////////////////////////////////////////////////////////////////////
+	//
+	// Folder Names
+	//
+	// //////////////////////////////////////////////////////////////////////////////
+	public static String LDRAW_DIRECTORY_NAME = "LDraw";
+
+	public static String PRIMITIVES_DIRECTORY_NAME = "p";
+	public static String PRIMITIVES_48_DIRECTORY_NAME = "48";
+
+	public static String PARTS_DIRECTORY_NAME = "parts"; // match case of
+															// LDraw.org
+															// complete
+															// distribution zip
+															// package.
+	public static String SUBPARTS_DIRECTORY_NAME = "s";
+
+	public static String TEXTURES_DIRECTORY_NAME = "textures";
+
+	public static String UNOFFICIAL_DIRECTORY_NAME = "Unofficial";
+
+	// //////////////////////////////////////////////////////////////////////////////
+	//
+	// File Names
+	//
+	// //////////////////////////////////////////////////////////////////////////////
+
+	public static String LDCONFIG = "LDConfig";
+	public static String LDCONFIG_EXTENSION = "ldr";
+	public static String LDCONFIG_FILE_NAME = LDCONFIG + "."
+			+ LDCONFIG_EXTENSION;
+
+	public static String MLCAD = "MLCad";
+	public static String MLCAD_EXTENSION = "ini";
+	public static String MLCAD_INI_FILE_NAME = MLCAD + "." + MLCAD_EXTENSION;
+
+	public static String PART_CATALOG_NAME = "Bricksmith Parts.plist";
+
+	private static LDrawPaths _instance = null;
+
+	/**
+	 * @uml.property  name="preferredLDrawPath"
+	 */
+	private String preferredLDrawPath;
+
+	public synchronized static LDrawPaths getInstance() {
+		if (_instance == null)
+			_instance = new LDrawPaths();
+
+		return _instance;
+	}
+
+	public static LDrawPaths sharedPaths() {
+		return getInstance();
+	}
+
+	// ========== internalLDrawPath
+	// =================================================
+	//
+	// Purpose: References an LDraw folder baked into Bricksmith to distribute
+	// some unofficial parts.
+	//
+	// ==============================================================================
+	public String internalLDrawPath() {
+		// todo.
+		// NSBundle *mainBundle = null;
+		String builtInPath = null;
+
+		// mainBundle = [NSBundle mainBundle];
+		builtInPath = LDRAW_DIRECTORY_NAME;
+
+		return builtInPath;
+	}
+
+	public String preferredLDrawPath() {
+		return preferredLDrawPath;
+	}
+
+	/**
+	 * @param pathIn
+	 * @uml.property  name="preferredLDrawPath"
+	 */
+	public void setPreferredLDrawPath(String pathIn) {
+		this.preferredLDrawPath = pathIn;
+	}
+
+	// Standard paths
+	public String partsPathForDomain(LDrawDomainT domain) {
+		String baseLDrawPath = null;
+		String path = null;
+
+		if (domain == LDrawDomainT.LDrawUserOfficial
+				|| domain == LDrawDomainT.LDrawUserUnofficial) {
+			baseLDrawPath = preferredLDrawPath;
+		} else {
+			baseLDrawPath = internalLDrawPath();
+		}
+
+		if (domain == LDrawDomainT.LDrawUserOfficial
+				|| domain == LDrawDomainT.LDrawInternalOfficial) {
+			path = baseLDrawPath + PARTS_DIRECTORY_NAME;
+		} else {
+			path = baseLDrawPath + UNOFFICIAL_DIRECTORY_NAME;
+			path = path + PARTS_DIRECTORY_NAME;
+		}
+
+		return path+"/";
+
+	}
+
+	// ========== primitivesPathForDomain:
+	// ==========================================
+	// ==============================================================================
+	public String primitivesPathForDomain(LDrawDomainT domain) {
+		String baseLDrawPath = null;
+		String path = null;
+
+		if (domain == LDrawDomainT.LDrawUserOfficial
+				|| domain == LDrawDomainT.LDrawUserUnofficial) {
+			baseLDrawPath = preferredLDrawPath;
+		} else {
+			baseLDrawPath = internalLDrawPath();
+		}
+
+		if (domain == LDrawDomainT.LDrawUserOfficial
+				|| domain == LDrawDomainT.LDrawInternalOfficial) {
+			path = baseLDrawPath + PRIMITIVES_DIRECTORY_NAME;
+		} else {
+			path = baseLDrawPath + UNOFFICIAL_DIRECTORY_NAME;
+			path = path + PRIMITIVES_DIRECTORY_NAME;
+		}
+
+		return path+"/";
+	}
+
+	public String primitives48PathForDomain(LDrawDomainT domain) {
+		String path = primitivesPathForDomain(domain);
+
+		path = path + PRIMITIVES_48_DIRECTORY_NAME;
+
+		return path+"/";
+
+	}
+
+	// ========== ldconfigPath
+	// ======================================================
+	//
+	// Purpose: Returns the path to LDraw/ldconfig.ldr, or maybe our fallback
+	// internal file. If this method returns a path that doesn't
+	// actually exist, it means somebody was messing with the
+	// application bundle.
+	//
+	// ==============================================================================
+
+	public String ldconfigPath() {
+		// todo
+		// NSBundle mainBundle = null;
+		String installedPath = null;
+		String builtInPath = null;
+		String ldconfigPath = null;
+
+		// Try in the LDraw folder first
+		installedPath = preferredLDrawPath + LDCONFIG_FILE_NAME;
+
+		if (installedPath != null) // could be null if no LDraw folder is set in
+									// prefs
+		{
+			if (new File(installedPath).isFile()) {
+				ldconfigPath = installedPath;
+			}
+		}
+
+		// Try inside the application bundle instead
+		if (ldconfigPath == null) {
+			// mainBundle = [NSBundle mainBundle];
+			// builtInPath = [mainBundle pathForResource:LDCONFIG
+			// ofType:LDCONFIG_EXTENSION];
+
+			// Attempt to install it
+			if (builtInPath != null) {
+				ldconfigPath = builtInPath;
+			}
+		}
+
+		return ldconfigPath;
+
+	}
+
+	// ========== MLCadIniPath
+	// ======================================================
+	//
+	// Purpose: Returns the path to a valid MLCad.ini file. By default, this is
+	// LDraw/MLCad.ini.
+	//
+	// Because MLCad.ini is a third-party add-on not distributed with
+	// LDraw, Bricksmith comes bundled with its own copy. But it will
+	// use the one in LDraw/ if it exists.
+	//
+	// ==============================================================================
+
+	public String MLCadIniPath() {
+		// NSFileManager *fileManager = [[[NSFileManager alloc] init]
+		// autorelease];
+		String preferredPath = preferredLDrawPath + MLCAD_INI_FILE_NAME;
+		String actualPath = null;
+
+		// we want MLCad.ini to be in the LDraw folder.
+		if (new File(preferredPath).isFile()) {
+			actualPath = preferredPath;
+		} else {
+			// we have to fish it out of the application bundle and install it.
+			// NSBundle *mainBundle = [NSBundle mainBundle];
+			// NSString *builtInPath = [mainBundle pathForResource:MLCAD
+			// ofType:MLCAD_EXTENSION];
+
+			// actualPath = builtInPath;
+
+			// Bricksmith used to install MLCad.ini if the user didn't have it.
+			// But
+			// I decided that didn't make a lot of since, since MLCad.ini is not
+			// part of the official LDraw distribution. People probably wouldn't
+			// realize they had to upgrade this file.
+			// BOOL installSuccess = NO;
+			//
+			// installSuccess = [fileManager copyPath:builtInPath
+			// toPath:preferredPath handler:null];
+			//
+			// if(installSuccess == YES)
+			// actualPath = preferredPath;
+			// else
+			// actualPath = builtInPath; //couldn't install; just use our
+			// internal copy.
+
+		}
+
+		return actualPath;
+
+	}
+
+	// ========== partCatalogPath
+	// ===================================================
+	//
+	// Purpose: Returns the path at which the part catalog should exist. (It may
+	// not actually exist there; this method doesn't check.)
+	//
+	// ==============================================================================
+	public String partCatalogPath() {
+		String pathToPartList = null;
+
+		// Do we have an LDraw folder?
+		if (preferredLDrawPath != null) {
+			pathToPartList = preferredLDrawPath + PART_CATALOG_NAME;
+		}
+
+		return pathToPartList;
+
+	}
+
+	public String subpartsPathForDomain(LDrawDomainT domain) {
+		String path = partsPathForDomain(domain);
+
+		path = path + SUBPARTS_DIRECTORY_NAME;
+
+		return path;
+	}
+
+	// Utilities
+	// ========== findLDrawPath
+	// =====================================================
+	//
+	// Purpose: Attempts to search out an LDraw path on the system.
+	//
+	// ==============================================================================
+
+	public String findLDrawPath() {
+		// todo
+		return null;
+	}
+
+	// ========== pathForPartName:
+	// ==================================================
+	//
+	// Purpose: Ferret out where this part is defined in the LDraw folder.
+	// Parts can be defined in any of the following folders:
+	// LDraw/p (primitives)
+	// LDraw/parts (parts)
+	// LDraw/parts/s (subparts)
+	// LDraw/unofficial (unofficial parts root -- Allen's addition)
+	//
+	// For regular parts and primitives, the partName is simply the
+	// filename as found in LDraw/parts or LDraw/p. But for subparts,
+	// partName is "s\partname.dat".
+	//
+	// This method automatically converts any occurance of the DOS
+	// path-separator ('\') found in partName to the UNIX path separator
+	// ('/'), then searches LDraw/parts/partName and LDraw/p/partName
+	// for the file. Thus, any subfolder can be specified this way, if
+	// the overlords of LDraw should choose to inflict another naming
+	// nightmare like this one.
+	//
+	// Returns: The path of the part if it is found in one of the folders, or
+	// null if the part is not defined in the LDraw folder.
+	//
+	// ==============================================================================
+
+	public String pathForPartName(String partName) {		
+		ArrayList<String>	searchPaths	= null;
+		String fixedPartName	= partName;
+		String		partPath		= null;
+		
+		if(searchPaths == null)
+		{
+			searchPaths = new ArrayList<String>();
+			searchPaths.add(partsPathForDomain(LDrawDomainT.LDrawUserOfficial));
+			searchPaths.add(primitives48PathForDomain(LDrawDomainT.LDrawUserOfficial));
+			searchPaths.add(primitivesPathForDomain(LDrawDomainT.LDrawUserOfficial));
+			searchPaths.add(partsPathForDomain(LDrawDomainT.LDrawUserUnofficial));
+			searchPaths.add(primitives48PathForDomain(LDrawDomainT.LDrawUserUnofficial));
+			searchPaths.add(primitivesPathForDomain(LDrawDomainT.LDrawUserUnofficial));
+			searchPaths.add(partsPathForDomain(LDrawDomainT.LDrawInternalOfficial));
+			searchPaths.add(primitives48PathForDomain(LDrawDomainT.LDrawInternalOfficial));
+			searchPaths.add(primitivesPathForDomain(LDrawDomainT.LDrawInternalOfficial));
+			searchPaths.add(partsPathForDomain(LDrawDomainT.LDrawInternalUnofficial));
+			searchPaths.add(primitives48PathForDomain(LDrawDomainT.LDrawInternalUnofficial));
+			searchPaths.add(primitivesPathForDomain(LDrawDomainT.LDrawInternalUnofficial));
+		}
+		
+		// LDraw references parts in subfolders by their relative pathnames in DOS 
+		// (e.g., "s\765s01.dat"). Convert to UNIX for simple searching.
+		while(fixedPartName.contains("\\"))
+			fixedPartName = fixedPartName.replace("\\",  "/");
+				
+		// If we pass an empty string, we'll wind up test for directories' existences --
+		// not what we want to do.
+		if(partName.length() == 0)
+		{
+			partPath = null;
+		}
+		else
+		{
+			//We have a file path name; try each directory.
+			
+			for(String basePath : searchPaths)
+			{
+				String testPath = basePath+fixedPartName;
+				
+				if(new File(testPath).isFile()){
+					partPath = testPath;
+					break;
+				}
+			}
+		}
+		
+		return partPath;
+	}
+
+	// ========== pathForTextureName:
+	// ===============================================
+	//
+	// Purpose: Searches the LDraw folder for a texture with the given name.
+	//
+	// ==============================================================================
+	public String pathForTextureName(String imageName) {
+		// todo
+		return null;
+	}
+
+	// ========== validateLDrawFolder:
+	// ==============================================
+	//
+	// Purpose: Checks to see that the folder at path is indeed a valid LDraw
+	// folder and contains the vital Parts and P directories.
+	//
+	// ==============================================================================
+
+	public boolean validateLDrawFolder(String folderPath) {
+		// Check and see if this folder is any good.
+		String partsFolderPath = folderPath + PARTS_DIRECTORY_NAME;
+		String primitivesFolderPath = folderPath + PRIMITIVES_DIRECTORY_NAME;
+
+		boolean folderIsValid = false;
+
+		if (new File(folderPath).isDirectory() && new File(partsFolderPath).isDirectory()
+				&& new File(primitivesFolderPath).isDirectory()) {
+			folderIsValid = true;
+		}
+
+		return folderIsValid;
+
+	}
+}

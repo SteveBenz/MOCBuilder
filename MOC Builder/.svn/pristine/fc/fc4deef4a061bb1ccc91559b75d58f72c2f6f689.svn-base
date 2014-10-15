@@ -1,0 +1,1192 @@
+package LDraw.Files;
+
+import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.StringTokenizer;
+import java.util.TreeSet;
+
+import javax.media.opengl.GL2;
+import javax.swing.undo.UndoManager;
+
+import Command.LDrawColorT;
+import Command.LDrawLSynthDirective;
+import Command.LDrawPart;
+import Common.Box2;
+import Common.Box3;
+import Common.Matrix4;
+import Common.Ray3;
+import Common.Vector2f;
+import Common.Vector3f;
+import LDraw.Support.DispatchGroup;
+import LDraw.Support.LDrawCustomMetaCommand;
+import LDraw.Support.LDrawDirective;
+import LDraw.Support.LDrawKeywords;
+import LDraw.Support.LDrawMetaCommand;
+import LDraw.Support.LDrawUtilities;
+import LDraw.Support.MatrixMath;
+import LDraw.Support.Range;
+import LDraw.Support.type.CacheFlagsT;
+import Renderer.ILDrawCollector;
+import Renderer.ILDrawRenderer;
+//==============================================================================
+//
+//File:		LDrawStep.h
+//
+//Purpose:		Represents a collection of Lego bricks which compose a single 
+//				step when constructing a model.
+//
+//Created by Allen Smith on 2/20/05.
+//Copyright (c) 2005. All rights reserved.
+//==============================================================================
+
+public class LDrawStep extends LDrawContainer {
+	/**
+	 * @uml.property name="stepRotationType"
+	 * @uml.associationEnd
+	 */
+	LDrawStepRotationT stepRotationType;
+	/**
+	 * @uml.property name="rotationAngle"
+	 * @uml.associationEnd
+	 */
+	Vector3f rotationAngle; // in degrees
+	/**
+	 * @uml.property name="cachedBounds"
+	 * @uml.associationEnd
+	 */
+	Box3 cachedBounds; // cached bounds of the step
+	// Optimization variables
+	/**
+	 * @uml.property name="stepFlavor"
+	 * @uml.associationEnd
+	 */
+	LDrawStepFlavorT stepFlavor; // defaults to LDrawStepAnyDirectives
+	/**
+	 * @uml.property name="colorOfAllDirectives"
+	 * @uml.associationEnd readOnly="true"
+	 */
+	LDrawColorT colorOfAllDirectives;
+	
+	String stepName;
+
+	// ---------- emptyStep
+	// -----------------------------------------------[static]--
+	//
+	// Purpose: Creates a new step ready to be edited, with nothing inside it.
+	//
+	// ------------------------------------------------------------------------------
+	public static LDrawStep emptyStep() {
+		LDrawStep newStep = new LDrawStep();
+		newStep.init();
+		return newStep;
+
+	}// end emptyStep
+
+	// ---------- emptyStepWithFlavor:
+	// ------------------------------------[static]--
+	//
+	// Purpose: Creates a new step ready to be edited, and prespecifies that
+	// only directives of the flavorType will be added.
+	//
+	// ------------------------------------------------------------------------------
+	public static LDrawStep emptyStepWithFlavor(LDrawStepFlavorT flavorType) {
+		LDrawStep newStep = LDrawStep.emptyStep();
+		newStep.setStepFlavor(flavorType);
+
+		return newStep;
+
+	}// end emptyStepWithFlavor:
+
+	//
+	// #pragma mark -
+
+	// ========== init
+	// ==============================================================
+	//
+	// Purpose: Creates a new step ready to be edited, with nothing inside it.
+	//
+	// ==============================================================================
+	public LDrawStep init() {
+		super.init();
+
+		stepRotationType = LDrawStepRotationT.LDrawStepRotationNone;
+		rotationAngle = Vector3f.getZeroVector3f();
+		stepFlavor = LDrawStepFlavorT.LDrawStepAnyDirectives;
+		cachedBounds = Box3.getInvalidBox();
+
+		return this;
+
+	}// end init
+
+	// ========== initWithLines:inRange:parentGroup:
+	// ================================
+	//
+	// Purpose: Parses a step beginning at the specified line of LDraw code.
+	//
+	// ==============================================================================
+	public LDrawStep initWithLines(ArrayList<String> lines, Range range,
+			DispatchGroup parentGroup) throws Exception {
+		String currentLine = null;
+		LDrawDirective commandClass = null;
+		Range commandRange = range;
+		ArrayList<LDrawDirective> directives = new ArrayList<LDrawDirective>();
+		int lineIndex = 0;
+		int insertIndex = 0;
+
+		super.initWithLines(lines, range, parentGroup);
+
+		cachedBounds = Box3.getInvalidBox();
+
+		DispatchGroup stepDispatchGroup = null;
+		// todo
+		// #if USE_BLOCKS
+		// dispatch_queue_t queue = null;
+		//
+		// // Create a group for the multithreaded parsing of the step contents.
+		// queue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,
+		// 0);
+		// stepDispatchGroup = dispatch_group_create
+		stepDispatchGroup = new DispatchGroup();
+		//
+		// // Prevent the owning group from completing until the step is
+		// finished
+		// // asynchronously parsing its contents.
+		// if(parentGroup != null)
+		// {
+		// dispatch_group_enter(parentGroup);
+		// }
+		// #endif
+
+		// Parse out the STEP command
+
+		if (range.length() > 0) {
+			currentLine = lines.get(range.getMaxRange());
+
+			// See if the line is a step delimiter. If the delimiter doesn't
+			// exist,
+			// it's implied (such as in a 1-step model). Otherwise, it marks the
+			// end
+			// of the step.
+			if (lineIsStepTerminator(currentLine)) {
+				// Nothing more to parse. Stop.
+//				range.decreseLength(1);
+
+			} else if (lineIsRotationStepTerminator(currentLine)) {
+				// Parse the rotation step.
+				if (parseRotationStepFromLine(currentLine) == false)
+					throw new Exception("BricksmithParseException"
+							+ ": Bad rotstep syntax");
+
+//				range.decreseLength(1);
+			}
+		}
+
+		// Convert each non-step-delimiter line into a directive, and add it to
+		// this step.
+		lineIndex = range.getLocation();
+
+		while (lineIndex <= range.getMaxRange()) {
+			currentLine = lines.get(lineIndex);
+
+			if (currentLine.length() > 0) {
+				commandClass = LDrawUtilities
+						.classForDirectiveBeginningWithLine(currentLine);
+
+				// todo
+				commandRange = LDrawDirective.rangeOfDirectiveBeginningAtIndex(
+						lineIndex, lines, range.getMaxRange());
+				// todo
+				// #if USE_BLOCKS
+				// // Parse (multithreaded)
+				// dispatch_group_async(stepDispatchGroup, queue,
+				// ^{
+				// #endif
+				// Parse but disallow multithreading for subparsing. LDraw
+				// objects be be deeply recursive, which means we would pile
+				// up a lot of dispatch_group_wait calls, resulting in so
+				// many threads we run out of stack space.
+				LDrawDirective newDirective = null;
+				if (commandClass == null) {
+					newDirective = new LDrawDirective();
+				} else {
+					newDirective = commandClass.initWithLines(lines, commandRange,stepDispatchGroup);
+				}
+				if (newDirective instanceof LDrawCustomMetaCommand) {
+					 if (lineIsStepName(currentLine)){
+						 stepName = ((LDrawCustomMetaCommand)newDirective).getCommandValue();
+					 }						 
+				}
+				// Store non-retaining, but *thread-safe* container
+				// (NSMutableArray is falseT). Since it doesn't retain, we
+				// mustn't
+				// autorelease newDirective.
+				directives.add(insertIndex, newDirective);
+				// todo
+				// #if USE_BLOCKS
+				// });
+				// #endif
+				lineIndex = commandRange.getMaxRange() + 1;
+				insertIndex += 1;
+			} else {
+				lineIndex += 1;
+			}
+
+		}
+
+		// //todo
+		// #if USE_BLOCKS
+		// dispatch_group_notify(stepDispatchGroup, queue,
+		// ^{
+		// #endif
+		int counter = 0;
+		LDrawDirective currentDirective = null;
+
+		// Add the accumulated directives *in order*
+		for (counter = 0; counter < insertIndex; counter++) {
+			currentDirective = directives.get(counter);
+
+			addDirective(currentDirective);
+		}
+
+		// todo
+		// #if USE_BLOCKS
+		// // Now that the step is complete, we can release our lock on the
+		// // parent group and allow it to finish.
+		// if(parentGroup != null)
+		// {
+		// dispatch_group_leave(parentGroup);
+		// }
+		// });
+		// dispatch_release(stepDispatchGroup);
+		// #endif
+
+		return this;
+
+	}// end initWithLines:inRange:
+
+	// ---------- rangeOfDirectiveBeginningAtIndex:inLines:maxIndex:
+	// ------[static]--
+	//
+	// Purpose: Returns the range from the beginning to the end of the step.
+	//
+	// ------------------------------------------------------------------------------
+	public static Range rangeOfDirectiveBeginningAtIndex(int index,
+			ArrayList<String> lines, int maxIndex) {
+		String currentLine = null;
+		int counter = 0;
+		Range testRange = new Range(index, maxIndex - index + 1);
+		int stepLength = 0;
+		Range stepRange;
+		
+		// Find the last line in the step. Steps either end with the step
+		// delimiter,
+		// or they simply go all the way to the end of the file.
+		// Convert each non-step-delimiter line into a directive, and add it to
+		// this
+		// step.
+		for (counter = testRange.getLocation(); counter <= testRange
+				.getMaxRange(); counter++) {
+			currentLine = lines.get(counter);
+			stepLength++;
+
+			// See if the line is a step delimiter. If the delimiter doesn't
+			// exist,
+			// it's implied (such as in a 1-step model). Otherwise, it marks the
+			// end
+			// of the step.
+			if (lineIsStepTerminator(currentLine)
+					|| lineIsRotationStepTerminator(currentLine)) {
+				// Nothing more to parse. Stop.
+				break;
+			}
+		}
+
+		stepRange = new Range(index, stepLength);
+
+		return stepRange;
+
+	}// end rangeOfDirectiveBeginningAtIndex:inLines:maxIndex:
+		//
+
+	//
+	// #pragma mark -
+	// #pragma mark DIRECTIVES
+	// #pragma mark -
+
+	// ========== draw:viewScale:parentColor:
+	// =======================================
+	//
+	// Purpose: Draw all the commands in the step.
+	//
+	// Certain steps are marked as having been optimized for fast
+	// drawing. Such steps consist entirely of one kind of directive,
+	// so we need call glBegin only once for the entire step.
+	//
+	// ==============================================================================
+	public void collectColor() {
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+
+		// Draw each element in the step.
+		for (LDrawDirective currentDirective : commandsInStep) {
+			currentDirective.collectColor();
+		}
+	}// end draw:viewScale:parentColor:
+
+	// ========== drawSelf:
+	// ===========================================================
+	//
+	// Purpose: Draw this directive and its subdirectives by calling APIs on
+	// the passed in renderer, then calling drawSelf on children.
+	//
+	// Notes: Steps, like most collections, simply pass down the drawSelf
+	// message. This is needed because parts "draw" themselves; they do
+	// not "collect" themselves.
+	//
+	// ================================================================================
+	public void drawSelf(GL2 gl2, ILDrawRenderer renderer) {
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+
+		// Draw each element in the step.
+//		for (LDrawDirective currentDirective : commandsInStep) {
+//			currentDirective.drawSelf(gl2, renderer);
+//		}
+		LDrawDirective currentDirective;
+		for (int i=0; i<commandsInStep.size(); i++) {
+			currentDirective = commandsInStep.get(i);
+			currentDirective.drawSelf(gl2, renderer);
+		}
+	}// end drawSelf:
+
+	// ========== collectSelf:
+	// ========================================================
+	//
+	// Purpose: Collect this is called on each directive by its parents to
+	// accumulate _mesh_ data into a display list for later drawing.
+	// The collector protocol passed in is some object capable of
+	// remembering the collectable data.
+	//
+	// The step does this by recursively collecting its directives.
+	//
+	// ================================================================================
+	public void collectSelf(ILDrawCollector renderer) {
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+
+		// Draw each element in the step.
+		for (LDrawDirective currentDirective : commandsInStep) {
+			currentDirective.collectSelf(renderer);
+		}
+		revalCache(CacheFlagsT.DisplayList);
+	}// end collectSelf:
+
+	// ========== debugDrawboundingBox
+	// ==============================================
+	//
+	// Purpose: Draw a translucent visualization of our bounding box to test
+	// bounding box caching.
+	//
+	// ==============================================================================
+	public void debugDrawboundingBox(GL2 gl2) {
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+
+		// Draw each element in the step.
+		for (LDrawDirective currentDirective : commandsInStep) {
+			currentDirective.debugDrawboundingBox(gl2);
+		}
+
+		super.debugDrawboundingBox(gl2);
+	}// end debugDrawboundingBox
+
+	public void getRange( Matrix4 transform, float[] range )
+	{
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+		int commandCount = commandsInStep.size();
+		LDrawDirective currentDirective = null;
+		int counter = 0;
+
+		// Draw all the steps in the model
+		for (counter = 0; counter < commandCount; counter++) {
+			currentDirective = commandsInStep.get(counter);
+			currentDirective.getRange(transform, range);
+		}
+	}
+	// ========== hitTest:transform:viewScale:boundsOnly:creditObject:hits:
+	// =======
+	//
+	// Purpose: Hit-test the geometry.
+	//
+	// ==============================================================================
+	public void hitTest(Ray3 pickRay, Matrix4 transform, float scaleFactor,
+			boolean boundsOnly, LDrawDirective creditObject,
+			HashMap<LDrawDirective, Float> hits) {
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+		int commandCount = commandsInStep.size();
+		LDrawDirective currentDirective = null;
+		int counter = 0;
+
+		// Draw all the steps in the model
+		for (counter = 0; counter < commandCount; counter++) {
+			currentDirective = commandsInStep.get(counter);
+			currentDirective.hitTest(pickRay, transform, scaleFactor,
+					boundsOnly, creditObject, hits);
+		}
+	}
+	
+	public void hitTest(Ray3 pickRay, Matrix4 transform, LDrawDirective creditObject,
+			HashMap<LDrawDirective, Float> hits) {
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+		int commandCount = commandsInStep.size();
+		LDrawDirective currentDirective = null;
+		int counter = 0;
+
+		// Draw all the steps in the model
+		for (counter = 0; counter < commandCount; counter++) {
+			currentDirective = commandsInStep.get(counter);
+			currentDirective.hitTest(pickRay, transform, creditObject, hits);
+		}
+	}
+
+	// ========== boxTest:transform:boundsOnly:creditObject:hits:
+	// ===================
+	//
+	// Purpose: Check for intersections with screen-space geometry.
+	//
+	// ==============================================================================
+	public boolean boxTest(Box2 bounds, Matrix4 transform, boolean boundsOnly,
+			LDrawDirective creditObject, TreeSet<LDrawDirective> hits) {
+		if (!MatrixMath
+				.VolumeCanIntersectBox(boundingBox3(), transform, bounds)) {
+			return false;
+		}
+
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+		int commandCount = commandsInStep.size();
+		LDrawDirective currentDirective = null;
+		int counter = 0;
+
+		// Draw all the steps in the model
+		for (counter = 0; counter < commandCount; counter++) {
+			currentDirective = commandsInStep.get(counter);
+			if (currentDirective.boxTest(bounds, transform, boundsOnly,
+					creditObject, hits))
+				if (creditObject != null)
+					return true;
+		}
+		return false;
+	}// end boxTest:transform:boundsOnly:creditObject:hits:
+
+	// ==========
+	// depthTest:inBox:transform:creditObject:bestObject:bestDepth:=======
+	//
+	// Purpose: depthTest finds the closest primitive (in screen space)
+	// overlapping a given point, as well as its device coordinate
+	// depth.
+	//
+	// ==============================================================================
+	public void depthTest(Vector2f testPt, Box2 bounds, Matrix4 transform,
+			LDrawDirective creditObject, ArrayList<LDrawDirective> bestObject,
+			FloatBuffer bestDepth) {
+		if (!MatrixMath.VolumeCanIntersectPoint(boundingBox3(), transform,
+				bounds, bestDepth.get(0))) {
+			return;
+		}
+
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+		int commandCount = commandsInStep.size();
+		LDrawDirective currentDirective = null;
+		int counter = 0;
+
+		// Draw all the steps in the model
+		for (counter = 0; counter < commandCount; counter++) {
+			currentDirective = commandsInStep.get(counter);
+			currentDirective.depthTest(testPt, bounds, transform, creditObject,
+					bestObject, bestDepth);
+		}
+	}// end depthTest:inBox:transform:creditObject:bestObject:bestDepth:
+
+	// ========== write
+	// =============================================================
+	//
+	// Purpose: Write out all the commands in the step, prefaced by the line
+	// 0 STEP
+	//
+	// ==============================================================================
+	public String write() {
+		return writeWithStepCommand(true);
+
+	}// end write
+
+	// ========== writeWithStepCommand:
+	// =============================================
+	//
+	// Purpose: Write out all the commands in the step. The output will be
+	// postfaced by the line 0 STEP if explicitStep is true.
+	// The reason this method exists is that we do not want to write
+	// the step command for the last step in the file. That step
+	// is inferred rather than explicit.
+	//
+	// Note: flag is ignored if this is a rotation step. In that case, you
+	// get the step command no matter what.
+	//
+	// ==============================================================================
+	public String writeWithStepCommand(boolean flag) {
+		String written = new String();
+		String CRLF = "\r\n";
+		Vector3f angleZYX = rotationAngleZYX();
+
+		ArrayList<LDrawDirective> commandsInStep = subdirectives();
+		LDrawDirective currentCommand = null;
+		int numberCommands = commandsInStep.size();
+		int counter = 0;
+
+		// Write all the step's subdirectives
+		for (counter = 0; counter < numberCommands; counter++) {
+			currentCommand = commandsInStep.get(counter);
+			written = written.concat(String.format("%s%s",
+					currentCommand.write(), CRLF));
+		}
+
+		// End with 0 STEP or 0 ROTSTEP
+		if (flag == true
+				|| stepRotationType != LDrawStepRotationT.LDrawStepRotationNone) {
+			switch (stepRotationType) {
+			case LDrawStepRotationNone:
+				written = written.concat(String.format("0 %s",
+						LDrawKeywords.LDRAW_STEP_TERMINATOR));
+				break;
+
+			case LDrawStepRotationRelative:
+				written = written.concat(String.format(
+						"0 %s %.3f %.3f %.3f %s",
+						LDrawKeywords.LDRAW_ROTATION_STEP_TERMINATOR,
+						angleZYX.getX(), angleZYX.getY(), angleZYX.getZ(),
+						LDrawKeywords.LDRAW_ROTATION_RELATIVE));
+				break;
+
+			case LDrawStepRotationAbsolute:
+				written = written.concat(String.format(
+						"0 %s %.3f %.3f %.3f %s",
+						LDrawKeywords.LDRAW_ROTATION_STEP_TERMINATOR,
+						angleZYX.getX(), angleZYX.getY(), angleZYX.getZ(),
+						LDrawKeywords.LDRAW_ROTATION_ABSOLUTE));
+				break;
+
+			case LDrawStepRotationAdditive:
+				written = written.concat(String.format(
+						"0 %s %.3f %.3f %.3f %s",
+						LDrawKeywords.LDRAW_ROTATION_STEP_TERMINATOR,
+						angleZYX.getX(), angleZYX.getY(), angleZYX.getZ(),
+						LDrawKeywords.LDRAW_ROTATION_ADDITIVE));
+				break;
+
+			case LDrawStepRotationEnd:
+				written = written.concat(String.format("0 %s %s",
+						LDrawKeywords.LDRAW_ROTATION_STEP_TERMINATOR,
+						LDrawKeywords.LDRAW_ROTATION_END));
+				break;
+			}
+		}
+
+		// Now remove that last CRLF, if it's there.
+		if (written.length() !=0 && written.charAt(written.length() - 1) == '\n') {
+			written = written.substring(0, written.length() - CRLF.length());
+		}
+
+		return written;
+
+	}// end writeWithStepCommand:
+		//
+		//
+		// #pragma mark -
+		// #pragma mark DISPLAY
+		// #pragma mark -
+
+	// ========== browsingDescription
+	// ===============================================
+	//
+	// Purpose: Returns a representation of the directive as a short
+	// string
+	// which can be presented to the user.
+	//
+	// ==============================================================================
+	public String browsingDescription() {
+		LDrawModel enclosingModel = enclosingModel();
+		String description = null;
+
+		// If there is no parent model, just display the word step. This
+		// situtation
+		// would be highly irregular.
+		if (enclosingModel == null)
+			description = "Step";
+
+		else {
+			// Return the step number.
+			ArrayList<LDrawStep> modelSteps = enclosingModel.steps();
+			int stepIndex = modelSteps.indexOf(this);
+
+			description = new String("StepDisplayWithNumber "
+					+ ((long) stepIndex + 1));
+		}
+
+		return description;
+
+	}// end browsingDescription
+
+	// ========== iconName
+	// ==========================================================
+	//
+	// Purpose: Returns the name of image file used to display this kind
+	// of
+	// object, or null if there is no icon.
+	//
+	// ==============================================================================
+	public String iconName() {
+		String iconName = null;
+
+		switch (stepRotationType) {
+		case LDrawStepRotationNone:
+			// no image.
+			break;
+
+		case LDrawStepRotationEnd:
+			iconName = "RotationStepEnd";
+			break;
+
+		default:
+			iconName = "RotationStep";
+			break;
+		}
+
+		return iconName;
+
+	}// end iconName
+
+	// ========== inspectorClassName
+	// ================================================
+	//
+	// Purpose: Returns the name of the class used to inspect this one.
+	//
+	// ==============================================================================
+	public String inspectorClassName() {
+		return "InspectionStep";
+	}// end inspectorClassName
+
+	// #pragma mark -
+	// #pragma mark ACCESSORS
+	// #pragma mark -
+
+	// ========== boundingBox3
+	// ======================================================
+	// ==============================================================================
+	public Box3 boundingBox3() {
+		if (revalCache(CacheFlagsT.CacheFlagBounds) == CacheFlagsT.CacheFlagBounds) {
+			cachedBounds = LDrawUtilities
+					.boundingBox3ForDirectives(subdirectives());
+		}
+		return cachedBounds;
+
+	}// end boundingBox3
+
+	// ========== enclosingModel
+	// ====================================================
+	//
+	// Purpose: Returns the model of which this step is a part.
+	//
+	// ==============================================================================
+	public LDrawModel enclosingModel() {
+		return (LDrawModel) enclosingDirective();
+	}// end enclosingModel
+
+	// ========== rotationAngle
+	// =====================================================
+	//
+	// Purpose: Returns the xyz angle in degrees of the rotation. The
+	// value
+	// must
+	// be interpreted according to the step rotation type.
+	//
+	// ==============================================================================
+	public Vector3f rotationAngle() {
+		return rotationAngle;
+
+	}// end rotationAngle
+
+	// ========== rotationAngleZYX
+	// ==================================================
+	//
+	// Purpose: Returns the zyx angle in degrees of the rotation.
+	//
+	// Notes: Of of Bricksmith's matrix math functions expect angles to
+	// be in
+	// x-y-z order, so this value is not useful internally. However,
+	// the ROTSTEP directive (and the rest of MLCad) uses a z-y-x
+	// angle, so we have to save to the file in this format.
+	//
+	// ==============================================================================
+	public Vector3f rotationAngleZYX() {
+		// ---------- Convert XYZ to ZYX
+		// --------------------------------------------
+
+		// Translate our internal XYZ angle to ZYX by creating a rotation
+		// matrix and decomposing it in a different order.
+
+		Matrix4 rotationMatrix = MatrixMath.Matrix4Rotate(
+				Matrix4.getIdentityMatrix4(), rotationAngle);
+		Vector3f angleZYX = MatrixMath
+				.Matrix4DecomposeZYXRotation(rotationMatrix);
+
+		// convert from radians to degrees
+		angleZYX.setX((float) Math.toDegrees(angleZYX.getX()));
+		angleZYX.setY((float) Math.toDegrees(angleZYX.getY()));
+		angleZYX.setZ((float) Math.toDegrees(angleZYX.getZ()));
+
+		// ---------- Fix weird float values
+		// ----------------------------------------
+
+		// Sometimes these get decomposed with a -180 rotation, which is the
+		// same
+		// as
+		// a 180 rotation. Fix it for display purposes.
+		if (MatrixMath.FloatsApproximatelyEqual(angleZYX.getX(), -180.0f))
+			angleZYX.setX(180);
+
+		if (MatrixMath.FloatsApproximatelyEqual(angleZYX.getY(), -180.0f))
+			angleZYX.setY(180);
+
+		if (MatrixMath.FloatsApproximatelyEqual(angleZYX.getZ(), -180.0f))
+			angleZYX.setZ(180);
+
+		// Sometimes we wind up with a -0 rotation, which ought to be plain
+		// old
+		// 0.
+		// Fix it for display purposes.
+		if (MatrixMath.FloatsApproximatelyEqual(angleZYX.getX(), -0.0f))
+			angleZYX.setX(0);
+
+		if (MatrixMath.FloatsApproximatelyEqual(angleZYX.getY(), -0.0f))
+			angleZYX.setY(0);
+
+		if (MatrixMath.FloatsApproximatelyEqual(angleZYX.getZ(), -0.0f))
+			angleZYX.setZ(0);
+
+		return angleZYX;
+
+	}// end rotationAngleZYX
+
+	// ========== stepFlavor
+	// ========================================================
+	//
+	// Purpose: Returns the kind of step this is (optimized parts group
+	// like
+	// directives into a single step).
+	//
+	// ==============================================================================
+	public LDrawStepFlavorT stepFlavor() {
+		return stepFlavor;
+
+	}// end stepFlavor
+
+	// ========== stepRotationType
+	// ==================================================
+	//
+	// Purpose: Returns what kind of rotation is attached to this step.
+	//
+	// ==============================================================================
+	public LDrawStepRotationT stepRotationType() {
+		return stepRotationType;
+
+	}// end stepRotationType
+
+	// #pragma mark -
+
+	// ========== setModel:
+	// =========================================================
+	//
+	// Purpose: Sets a reference to the model of which this step is a
+	// part.
+	// Called automatically by -addStep:
+	//
+	// ==============================================================================
+	public void setModel(LDrawModel enclosingModel) {
+		setEnclosingDirective(enclosingModel);
+	}// end setModel:
+
+	// ========== setRotationAngle:
+	// =================================================
+	//
+	// Purpose: Sets the xyz angle (in degrees) of the receiver's
+	// rotation.
+	// The
+	// meaning of the value is determined by the step rotation type.
+	//
+	// Notes: The angle stored in the LDraw file is in zyx order, so it
+	// is
+	// unsuitable for feeding directly to this method.
+	//
+	// ==============================================================================
+	/**
+	 * @param newAngle
+	 * @uml.property name="rotationAngle"
+	 */
+	public void setRotationAngle(Vector3f newAngle) {
+		rotationAngle = newAngle;
+
+	}// end setRotationAngle:
+
+	// ========== setRotationAngleZYX:
+	// ==============================================
+	//
+	// Purpose: Sets the rotation angle (in degrees) such the the z angle
+	// is
+	// applied first, then y, and lastly x.
+	//
+	// Notes: This is the format in which ROTSTEP angles are saved in the
+	// file, but Bricksmith's matrix functions expect XYZ angles. This
+	// translates the ZYX angle so that it can be used by the rest of
+	// Bricksmith.
+	//
+	// ==============================================================================
+	public void setRotationAngleZYX(Vector3f newAngleZYX) {
+		Matrix4 rotationMatrix = Matrix4.getIdentityMatrix4();
+		Vector3f newAngleXYZ = Vector3f.getZeroVector3f();
+
+		rotationMatrix = MatrixMath.Matrix4Rotate(rotationMatrix,
+				MatrixMath.V3Make(0, 0, newAngleZYX.getZ()));
+		rotationMatrix = MatrixMath.Matrix4Rotate(rotationMatrix,
+				MatrixMath.V3Make(0, newAngleZYX.getY(), 0));
+		rotationMatrix = MatrixMath.Matrix4Rotate(rotationMatrix,
+				MatrixMath.V3Make(newAngleZYX.getX(), 0, 0));
+
+		newAngleXYZ = MatrixMath.Matrix4DecomposeXYZRotation(rotationMatrix);
+
+		// convert from radians to degrees
+		newAngleXYZ.setX((float) Math.toDegrees(newAngleXYZ.getX()));
+		newAngleXYZ.setY((float) Math.toDegrees(newAngleXYZ.getY()));
+		newAngleXYZ.setZ((float) Math.toDegrees(newAngleXYZ.getZ()));
+
+		// Sometimes these get decomposed with a -180 rotation, which is the
+		// same
+		// as
+		// a 180 rotation. Fix it for display purposes.
+		if (MatrixMath.FloatsApproximatelyEqual(newAngleXYZ.getX(), -180.0f))
+			newAngleXYZ.setX(180);
+
+		if (MatrixMath.FloatsApproximatelyEqual(newAngleXYZ.getY(), -180.0f))
+			newAngleXYZ.setY(180);
+
+		if (MatrixMath.FloatsApproximatelyEqual(newAngleXYZ.getZ(), -180.0f))
+			newAngleXYZ.setZ(180);
+
+		setRotationAngle(newAngleXYZ);
+
+	}// end setRotationAngleZYX:
+
+	// ========== setStepFlavor:
+	// ====================================================
+	//
+	// Purpose: Sets the step flavor, which identifies the types of
+	// LDrawDirectives the step contains. Setting the flavor to a
+	// specific directive type will cause the step to draw its
+	// subdirectives inside one set of glBegin()/glEnd(), rather than
+	// starting a new group for each directive encountered.
+	//
+	// ==============================================================================
+	/**
+	 * @param newFlavor
+	 * @uml.property name="stepFlavor"
+	 */
+	public void setStepFlavor(LDrawStepFlavorT newFlavor) {
+		stepFlavor = newFlavor;
+
+	}// end setStepFlavor:
+
+	// ========== setStepRotationType:
+	// ==============================================
+	//
+	// Purpose: Sets the kind of rotation attached to this step.
+	//
+	// Notes: Honoring a step rotation is the responsibility of the
+	// object
+	// drawing the model, not the step itthis.
+	//
+	// ==============================================================================
+	/**
+	 * @param newValue
+	 * @uml.property name="stepRotationType"
+	 */
+	public void setStepRotationType(LDrawStepRotationT newValue) {
+		stepRotationType = newValue;
+
+	}// end setStepRotationType:
+
+	//
+	// #pragma mark -
+
+	// ========== insertDirective:atIndex:
+	// ==========================================
+	//
+	// Purpose: Inserts the new directive into the step.
+	//
+	// ==============================================================================
+	public void insertDirective(LDrawDirective directive, int index) {
+		invalCache(CacheFlagsT.CacheFlagBounds);
+		invalCache(CacheFlagsT.DisplayList);
+
+		super.insertDirective(directive, index);
+	}// end insertDirective:atIndex:
+
+	// ========== removeDirectiveAtIndex:
+	// ===========================================
+	//
+	// Purpose: Removes the directive from the step.
+	//
+	// ==============================================================================
+	public void removeDirectiveAtIndex(int index) {
+		invalCache(CacheFlagsT.CacheFlagBounds);
+		invalCache(CacheFlagsT.DisplayList);
+
+		// LDrawDirective directive = subdirectives().get(index);
+
+		super.removeDirectiveAtIndex(index);
+	}// end removeDirectiveAtIndex:
+
+	//
+	// ========== lineIsStepTerminator:
+	// =============================================
+	//
+	// Purpose: Returns if line is a 0 STEP
+	//
+	// ==============================================================================
+	public static boolean lineIsStepTerminator(String line) {
+		if (line == null)
+			return false;
+
+		StringTokenizer strTokenizer = new StringTokenizer(line);
+		if (strTokenizer.hasMoreTokens() == false)
+			return false;
+		String parsedWord = strTokenizer.nextToken();
+		if (parsedWord.equals("0") == false)
+			return false;
+		if (strTokenizer.hasMoreTokens() == false)
+			return false;
+
+		parsedWord = strTokenizer.nextToken();
+		if (parsedWord.equals(LDrawKeywords.LDRAW_STEP_TERMINATOR) == false)
+			return false;
+		return true;
+	}
+	
+	private boolean lineIsStepName (String line) {
+		if (line == null)
+			return false;
+
+		StringTokenizer strTokenizer = new StringTokenizer(line);
+		if (!strTokenizer.hasMoreTokens())
+			return false;
+		String parsedWord = strTokenizer.nextToken();
+		if (!(parsedWord.equals("0") && strTokenizer.hasMoreTokens()))
+			return false;
+		parsedWord = strTokenizer.nextToken();
+		if (!(parsedWord.equals(LDrawKeywords.BRICKBUILDER_CUSTOM_META) && strTokenizer.hasMoreTokens()))
+			return false; 
+		parsedWord = strTokenizer.nextToken();
+		if (!(parsedWord.equals(LDrawKeywords.BRICKBUILDER_STEP_NAME) && strTokenizer.hasMoreTokens()))
+			return false;
+		return true;	
+	}
+	
+	public void setStepName (String name){
+		stepName = name;
+		LDrawCustomMetaCommand customMeta;
+		for (LDrawDirective directive:subdirectives()){
+			if (directive instanceof LDrawCustomMetaCommand) {
+				customMeta = (LDrawCustomMetaCommand) directive;
+				if (LDrawKeywords.BRICKBUILDER_STEP_NAME.equals(customMeta.getCommandName())){
+					if ("".equals(name)) {
+						removeDirective(customMeta);
+					} else {
+						customMeta.setCommandValue(name);
+					}
+					return;
+				}
+			}
+		}
+		if (!"".equals(name)){
+			customMeta = new LDrawCustomMetaCommand();
+			customMeta.setCommandName(LDrawKeywords.BRICKBUILDER_STEP_NAME);
+			customMeta.setCommandValue(name);
+			addDirective(customMeta);
+		}
+	}
+	
+	public String getStepName (){
+		return stepName;
+	}
+
+	// ========== acceptsDroppedDirective:
+	// ==========================================
+	//
+	// Purpose: Returns true if this container will accept a directive
+	// dropped
+	// on
+	// it. Explicitly excludes LDrawLSynthDirectives such as
+	// INSIDE/OUTSIDE
+	// and this-referencing model "parts"
+	//
+	// ==============================================================================
+	public boolean acceptsDroppedDirective(LDrawDirective directive) {
+		// explicitly disregard LSynth directives
+		if (LDrawLSynthDirective.class.isInstance(directive)) {
+			return false;
+		}
+
+		// explicitly disregard this-references if the dropped directive is a
+		// model "part"
+		else if (LDrawPart.class.isInstance(directive)
+				&& ((LDrawPart) directive).referenceName() == ((LDrawMPDModel) enclosingModel())
+						.modelName()) {
+			return false;
+		}
+
+		return true;
+	}
+
+	// ========== lineIsRotationStepTerminator:
+	// =====================================
+	//
+	// Purpose: Returns if line is a 0 ROTSTEP
+	//
+	// ==============================================================================
+	public static boolean lineIsRotationStepTerminator(String line) {
+		if (line == null)
+			return false;
+
+		StringTokenizer strTokenizer = new StringTokenizer(line);
+		if (strTokenizer.hasMoreTokens() == false)
+			return false;
+		String parsedWord = strTokenizer.nextToken();
+		if (parsedWord.equals("0") == false)
+			return false;
+		if (strTokenizer.hasMoreTokens() == false)
+			return false;
+
+		parsedWord = strTokenizer.nextToken();
+		if (parsedWord.equals(LDrawKeywords.LDRAW_ROTATION_STEP_TERMINATOR) == false)
+			return false;
+		return true;
+
+	}
+
+	// ========== parseRotationStepFromLine:
+	// ========================================
+	//
+	// Purpose: Parses out the rotation step values from the given line.
+	//
+	// Rotation steps can have the following forms:
+	//
+	// 0 ROTSTEP angleX angleY angleZ // implied REL
+	// 0 ROTSTEP angleX angleY angleZ REL
+	// 0 ROTSTEP angleX angleY angleZ ABS
+	// 0 ROTSTEP angleX angleY angleZ ADD
+	// 0 ROTSTEP END
+	//
+	// Notes: The angle in ROTSTEPs is in z-y-x order, which is backwards
+	// from
+	// how Bricksmith expects the world to be.
+	//
+	// Returns: true on success.
+	//
+	// ==============================================================================
+	public boolean parseRotationStepFromLine(String rotstep) {
+		Vector3f angles = Vector3f.getZeroVector3f();
+		boolean success = true;
+
+		try {
+			if (rotstep.contains("0") == false)
+				throw new Exception("BricksmithParseException: "
+						+ "Bad ROTSTEP syntax");
+
+			if (rotstep.contains(LDrawKeywords.LDRAW_ROTATION_STEP_TERMINATOR) == false)
+				throw new Exception("BricksmithParseException: "
+						+ "Bad ROTSTEP syntax");
+
+			// Is it an end rotation?
+			if (rotstep.contains(LDrawKeywords.LDRAW_ROTATION_END) == true) {
+				setStepRotationType(LDrawStepRotationT.LDrawStepRotationEnd);
+			} else {
+
+				StringTokenizer strTokenizer = new StringTokenizer(rotstep);
+				String parsedString = strTokenizer.nextToken(); // 0
+				parsedString = strTokenizer.nextToken(); // ROTSTEP
+
+				// ---------- Angles
+				// ------------------------------------------------
+				parsedString = strTokenizer.nextToken(); // angleX
+				angles.setX(Float.parseFloat(parsedString));
+				parsedString = strTokenizer.nextToken(); // angleY
+				angles.setY(Float.parseFloat(parsedString));
+				parsedString = strTokenizer.nextToken(); // angleZ
+				angles.setZ(Float.parseFloat(parsedString));
+
+				// ---------- Rotation Type
+				// -----------------------------------------
+				if(strTokenizer.hasMoreTokens()==false)
+					setStepRotationType(LDrawStepRotationT.LDrawStepRotationRelative);
+				else{
+					parsedString = strTokenizer.nextToken(); // Rotation Type
+					if(parsedString.equals(LDrawKeywords.LDRAW_ROTATION_ABSOLUTE))
+						setStepRotationType(LDrawStepRotationT.LDrawStepRotationAbsolute);
+					else if(parsedString.equals(LDrawKeywords.LDRAW_ROTATION_ADDITIVE))
+						setStepRotationType(LDrawStepRotationT.LDrawStepRotationAdditive);
+					else if(parsedString.equals(LDrawKeywords.LDRAW_ROTATION_RELATIVE))
+						setStepRotationType(LDrawStepRotationT.LDrawStepRotationRelative);
+				}
+
+				setRotationAngleZYX(angles);
+			}
+		} catch (Exception e) {
+			success = false;
+			System.out.println("BricksmithParseException: "
+					+ "Bad ROTSTEP syntax");
+		}
+
+		return success;
+
+	}// end parseRotationStepFromLine:
+
+	// ========== registerUndoActions
+	// ===============================================
+	//
+	// Purpose: Registers the undo actions that are unique to this
+	// subclass,
+	// not to any superclass.
+	//
+	// ==============================================================================
+	public void registerUndoActions(UndoManager undoManager) {
+		super.registerUndoActions(undoManager);
+
+		// todo
+		// [[undoManager prepareWithInvocationTarget:this]
+		// setRotationAngle:[this
+		// rotationAngle]();
+		// [[undoManager prepareWithInvocationTarget:this]
+		// setStepRotationType:[this
+		// stepRotationType]();
+		// [undoManager setActionName:NSLocalizedString(@"UndoAttributesStep",
+		// null)();
+
+	}// end registerUndoActions:
+
+//	public Object clone() throws CloneNotSupportedException {
+//		LDrawStep a = (LDrawStep) super.clone();
+////		a.rotationAngle = (Vector3f) rotationAngle.clone();
+////		a.cachedBounds = (Box3) cachedBounds.clone();
+//		return a;
+//	}
+	
+//	public void setSelected(boolean flag) {
+//		for(LDrawDirective directive : subdirectives())
+//			directive.setSelected(flag);
+//	}
+
+}

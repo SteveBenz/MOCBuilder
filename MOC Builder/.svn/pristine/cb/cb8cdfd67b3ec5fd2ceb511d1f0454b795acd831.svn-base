@@ -1,0 +1,7 @@
+eclipse.preferences.version=1
+encoding//src/LDraw/Files/LDrawContainer.java=UTF-8
+encoding//src/LDraw/Files/LDrawModel.java=UTF-8
+encoding//src/LDraw/Support/LDrawGLRenderer.java=UTF-8
+encoding//src/LDraw/Support/MatrixMath.java=UTF-8
+encoding//src/Window/BrickViewer.java=UTF-8
+encoding//src/Window/MenuHandler.java=UTF-8

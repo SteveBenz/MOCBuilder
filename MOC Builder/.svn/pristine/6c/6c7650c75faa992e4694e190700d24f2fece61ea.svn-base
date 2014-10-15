@@ -1,0 +1,216 @@
+package Bricklink;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+
+import Bricklink.org.kleini.bricklink.api.BrickLinkClient;
+import Bricklink.org.kleini.bricklink.api.Catalog.SubsetsRequest;
+import Bricklink.org.kleini.bricklink.api.Catalog.SubsetsResponse;
+import Bricklink.org.kleini.bricklink.data.ColorT;
+import Bricklink.org.kleini.bricklink.data.EntryDT;
+import Bricklink.org.kleini.bricklink.data.ItemType;
+import Bricklink.org.kleini.bricklink.data.OrderDT;
+import Bricklink.org.kleini.bricklink.data.SubsetDT;
+import Command.LDrawColorT;
+import Command.LDrawPart;
+import Common.Box3;
+import Common.Vector3f;
+import Connectivity.GlobalConnectivityManager;
+import Exports.CompatiblePartManager;
+import Exports.PartColors;
+import Exports.PartDomainT;
+import Exports.PartIds;
+import LDraw.Support.ColorLibrary;
+import LDraw.Support.MatrixMath;
+import LDraw.Support.PartCache;
+import LDraw.Support.type.LDrawGridTypeT;
+import Window.MOCBuilder;
+
+public class SetImporterFromBricklink {
+	private static SetImporterFromBricklink _instance = null;
+
+	// public static void main(String args[]) {
+	// SetImporterFromBricklink.getInstance().getPartNoListFrom("30024-1");
+	// }
+
+	private SetImporterFromBricklink() {
+	}
+
+	public synchronized static SetImporterFromBricklink getInstance() {
+		if (_instance == null)
+			_instance = new SetImporterFromBricklink();
+		return _instance;
+	}
+
+	public boolean getPartNoListFrom(String setNo) {
+
+		if (setNo != null) {
+			if (setNo.contains("-") == false) {
+				setNo += "-1";
+			}
+		}
+		BrickLinkClient client = BricklinkAPI.getInstance()
+				.getClientForOpenAPI();
+		CompatiblePartManager compatibleManager = CompatiblePartManager
+				.getInstance();
+
+		SubsetsRequest request = new SubsetsRequest(ItemType.SET, setNo);
+		ArrayList<LDrawPart> partList = new ArrayList<LDrawPart>();
+		try {
+			SubsetsResponse response = client.execute(request);
+			for (SubsetDT subsetDT : response.getSubsets()) {
+				for (EntryDT entryDT : subsetDT.getEntries()) {
+					if (entryDT.getItem().getType()
+							.equals(ItemType.PART.toString()) == false
+							&& entryDT.getItem().getType()
+									.equals(ItemType.MINIFIG.toString()) == false)
+						continue;					
+					String bricklinkPartNo = entryDT.getItem().getItemNo()
+							.toLowerCase();
+					
+//					System.out.println(bricklinkPartNo);
+					int quantity = entryDT.getQuantity();
+					ColorT bricklinkColor = entryDT.getColor();
+					PartIds partIds = compatibleManager.getPartIds(
+							PartDomainT.BRICKLINK, bricklinkPartNo);
+					if (partIds != null) {
+						ArrayList<String> ldrawPartNameList = partIds
+								.getId(PartDomainT.LDRAW);
+						if (ldrawPartNameList == null) {
+							ldrawPartNameList = new ArrayList<String>();
+							String candidateBricklinkPartName = null;
+							if (bricklinkPartNo.contains("c")) {
+								boolean isEndWithColorCode = true;
+								for (int i = bricklinkPartNo.lastIndexOf("c") + 1; i < bricklinkPartNo
+										.length(); i++) {
+									if (bricklinkPartNo.charAt(i) < '0'
+											|| bricklinkPartNo.charAt(i) > '9')
+										isEndWithColorCode = false;
+								}
+								if (isEndWithColorCode)
+									candidateBricklinkPartName = bricklinkPartNo
+											.substring(0, bricklinkPartNo
+													.lastIndexOf("c"));
+							}
+							if (candidateBricklinkPartName != null) {
+								System.out.println("CandidatePartName: "
+										+ candidateBricklinkPartName + "("
+										+ bricklinkPartNo + ")");
+								partIds = compatibleManager.getPartIds(
+										PartDomainT.BRICKLINK,
+										candidateBricklinkPartName);
+								if (partIds != null)
+									ldrawPartNameList.addAll(partIds
+											.getId(PartDomainT.LDRAW));
+							}
+						}
+						if (ldrawPartNameList.isEmpty()) {
+							ldrawPartNameList.add(bricklinkPartNo);
+							compatibleManager.updateIdMappingInfoFromBricklink(
+									bricklinkPartNo, bricklinkPartNo);
+						}
+						
+						for (String ldrawPartName : ldrawPartNameList) {
+							ldrawPartName += ".dat";
+							ldrawPartName = PartCache.getInstance()
+									.getRepresentPartName(ldrawPartName);
+
+							PartColors color = compatibleManager.getPartColors(
+									PartDomainT.BRICKLINK,
+									bricklinkColor.getIdentifier());
+							Integer ldrawColorValue = null;
+							if (color != null)
+								ldrawColorValue = color
+										.getColorId(PartDomainT.LDRAW);
+							if (ldrawColorValue == null) {
+								ldrawColorValue = LDrawColorT.LDrawCurrentColor
+										.getValue();
+							}
+							for (int i = 0; i < quantity; i++) {
+								LDrawPart part = new LDrawPart();
+								part.initWithPartName(ldrawPartName,
+										new Vector3f(0, 0, 0));
+								part.setLDrawColor(ColorLibrary
+										.sharedColorLibrary()
+										.colorForCode(
+												LDrawColorT
+														.byValue(ldrawColorValue)));
+								MOCBuilder.getInstance()
+										.addDirectiveToWorkingFile(part, false);
+								partList.add(part);
+							}
+						}
+					}
+				}
+			}
+			spreadOutBricks(partList);
+			GlobalConnectivityManager.getInstance().updateMatrixAll();
+			return true;
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		return false;
+	}
+
+	private void spreadOutBricks(ArrayList<LDrawPart> partList) {
+		if (partList.size() == 0)
+			return;
+
+		Collections.sort(partList, new Comparator<LDrawPart>() {
+			@Override
+			public int compare(LDrawPart o1, LDrawPart o2) {
+
+				Vector3f sizeO1 = o1.boundingBox3().getMax();
+				Vector3f sizeO2 = o2.boundingBox3().getMax();
+				int retValue = new Integer(Math.round(sizeO2.x)).compareTo(Math
+						.round(sizeO1.x));
+				if (retValue == 0)
+					retValue = o1.displayName().compareTo(o2.displayName());
+				if (retValue == 0)
+					retValue = o1
+							.getLDrawColor()
+							.colorCode()
+							.toString()
+							.compareTo(
+									o2.getLDrawColor().colorCode().toString());
+				return retValue;
+			}
+		});
+
+		float totalWidth = 0;
+		for (LDrawPart part : partList)
+			totalWidth += (part.boundingBox3().getMax()
+					.sub(part.boundingBox3().getMin()).x);
+
+		float widthOfLine = (float) (Math.sqrt(totalWidth / 80) * 80);
+		float widthTemp = 0;
+		int padding = 10;
+		float baseX = -widthOfLine / 2;
+		float baseZ = 0;
+		float maxZ = 0;
+		for (LDrawPart part : partList) {
+			Vector3f sizeOfPart = part.boundingBox3().getMax()
+					.sub(part.boundingBox3().getMin());
+
+			Vector3f pos = new Vector3f(baseX + sizeOfPart.x / 2, -LDrawGridTypeT.Coarse.getYValue(),
+					sizeOfPart.z / 2 + baseZ);
+			MOCBuilder.getInstance().moveDirectiveToWithoutConnectivity(part,
+					pos);
+			baseX = part.boundingBox3().getMax().getX() + padding;
+
+			if (maxZ < sizeOfPart.z)
+				maxZ = sizeOfPart.z;
+
+			widthTemp += sizeOfPart.x;
+			if (widthTemp > widthOfLine) {
+				baseZ += maxZ + padding;
+				baseX = -widthOfLine / 2;
+				widthTemp = 0;
+				maxZ = 0;
+			}
+		}
+
+	}
+}

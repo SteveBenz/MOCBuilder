@@ -1,0 +1,277 @@
+package Window;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map.Entry;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.ModifyEvent;
+import org.eclipse.swt.events.ModifyListener;
+import org.eclipse.swt.events.SelectionAdapter;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Dialog;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Table;
+import org.eclipse.swt.widgets.TableColumn;
+import org.eclipse.swt.widgets.TableItem;
+import org.eclipse.swt.widgets.Text;
+
+import Command.LDrawColorT;
+import Command.LDrawPart;
+import LDraw.Support.LDrawUtilities;
+import Notification.ILDrawSubscriber;
+import Notification.INotificationMessage;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+
+public class ModelInfoDlg extends Dialog implements ILDrawSubscriber {
+
+	protected Object result;
+	protected Shell shell;
+	private Table table;
+	private Text text_Author;
+	private Text text_ModelName;
+
+	private static ModelInfoDlg _instance = null;
+
+	public synchronized static ModelInfoDlg getInstance(Shell parent, int style) {
+		if (_instance == null) {
+			_instance = new ModelInfoDlg(parent, style);
+			_instance.open();
+		}
+		return _instance;
+	}
+
+	/**
+	 * Create the dialog.
+	 * 
+	 * @param parent
+	 * @param style
+	 */
+	private ModelInfoDlg(Shell parent, int style) {
+		super(parent, style);
+		setText("Model Info");
+
+	}
+
+	/**
+	 * Open the dialog.
+	 * 
+	 * @return the result
+	 */
+	public Object open() {
+
+		createContents();
+		shell.open();
+		shell.layout();
+		Display display = getParent().getDisplay();
+		while (!shell.isDisposed()) {
+			if (!display.readAndDispatch()) {
+				display.sleep();
+			}
+		}
+		_instance = null;
+
+		NotificationCenter.getInstance().removeSubscriber(this,
+				NotificationMessageT.LDrawPartAdded);
+		NotificationCenter.getInstance().removeSubscriber(this,
+				NotificationMessageT.LDrawPartRemoved);
+		NotificationCenter.getInstance().removeSubscriber(this,
+				NotificationMessageT.LDrawFileActiveModelDidChange);		
+		return result;
+	}
+
+	/**
+	 * Create contents of the dialog.
+	 */
+	Button btnAuthor;
+	Button btnModelName;
+	private Text text_NumOfBricks;
+
+	private void createContents() {
+		shell = new Shell(getParent(), getStyle());
+		shell.setSize(450, 381);
+		shell.setText(getText());
+
+		Label lblAuthor = new Label(shell, SWT.NONE);
+		lblAuthor.setBounds(10, 10, 55, 20);
+		lblAuthor.setText("Author");
+
+		Label lblModelName = new Label(shell, SWT.NONE);
+		lblModelName.setBounds(10, 34, 90, 20);
+		lblModelName.setText("Model Name");
+
+		Label lblNumofbricks = new Label(shell, SWT.NONE);
+		lblNumofbricks.setBounds(10, 110, 74, 20);
+		lblNumofbricks.setText("Bricks");
+
+		table = new Table(shell, SWT.BORDER | SWT.FULL_SELECTION);
+		table.setBounds(10, 140, 424, 203);
+		table.setHeaderVisible(true);
+		table.setLinesVisible(true);
+
+		text_Author = new Text(shell, SWT.BORDER);
+		text_Author.addModifyListener(new ModifyListener() {
+			public void modifyText(ModifyEvent arg0) {
+				if (text_Author.getText().equals(
+						MOCBuilder.getInstance().getAuthor())) {
+					btnAuthor.setEnabled(false);
+				} else
+					btnAuthor.setEnabled(true);
+			}
+		});
+		text_Author.setBounds(110, 7, 238, 21);
+
+		text_ModelName = new Text(shell, SWT.BORDER | SWT.MULTI);
+		text_ModelName.addModifyListener(new ModifyListener() {
+			public void modifyText(ModifyEvent arg0) {
+				if (text_ModelName.getText().equals(
+						MOCBuilder.getInstance().getModelName())) {
+					btnModelName.setEnabled(false);
+				} else
+					btnModelName.setEnabled(true);
+			}
+		});
+		text_ModelName.setBounds(110, 31, 238, 64);
+
+		btnAuthor = new Button(shell, SWT.NONE);
+		btnAuthor.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent arg0) {
+				MOCBuilder.getInstance().setAuthor(text_Author.getText());
+				btnAuthor.setEnabled(false);
+			}
+		});
+		btnAuthor.setEnabled(false);
+		btnAuthor.setBounds(354, 3, 75, 25);
+		btnAuthor.setText("Apply");
+
+		btnModelName = new Button(shell, SWT.NONE);
+		btnModelName.addSelectionListener(new SelectionAdapter() {
+			@Override
+			public void widgetSelected(SelectionEvent arg0) {
+				MOCBuilder.getInstance().setModelName(
+						text_ModelName.getText());
+				btnModelName.setEnabled(false);
+
+			}
+		});
+		btnModelName.setEnabled(false);
+		btnModelName.setBounds(354, 29, 75, 25);
+		btnModelName.setText("Apply");
+
+		text_Author.setText(MOCBuilder.getInstance().getAuthor());
+		text_ModelName.setText(MOCBuilder.getInstance().getModelName());
+
+		text_NumOfBricks = new Text(shell, SWT.BORDER | SWT.RIGHT);
+		text_NumOfBricks.setText("U/T (Unique/Total)");
+		text_NumOfBricks.setEditable(false);
+		text_NumOfBricks.setBounds(258, 113, 176, 21);
+		updatePartList();
+
+		int totalQty = 0;
+		int uniqueQty = 0;
+		for (Entry<String, Integer> entry : numOfSamePartMap.entrySet()) {
+			uniqueQty++;
+			totalQty += entry.getValue();
+		}
+		text_NumOfBricks
+				.setText(uniqueQty + "/" + totalQty + " (Unique/Total)");
+		createTable();
+
+		NotificationCenter.getInstance().addSubscriber(this,
+				NotificationMessageT.LDrawPartAdded);
+		NotificationCenter.getInstance().addSubscriber(this,
+				NotificationMessageT.LDrawPartRemoved);
+		NotificationCenter.getInstance().addSubscriber(this,
+				NotificationMessageT.LDrawFileActiveModelDidChange);
+	}
+
+	private void createTable() {
+
+		table.setVisible(false);
+		table.removeAll();
+		String[] titles = { "Index", "PartName", "Color", "Qty" };
+		for (int loopIndex = 0; loopIndex < titles.length; loopIndex++) {
+			TableColumn column = new TableColumn(table, SWT.NULL);
+			column.setText(titles[loopIndex]);
+		}
+
+		int index = 0;
+		for (index = 0; index < partNameList.size(); index++) {
+			String partName = partNameList.get(index);
+			LDrawColorT colorCode = partColorList.get(index);
+			int qty = 0;
+			qty = numOfSamePartMap.get(partName + colorCode.toString());
+
+			final TableItem item = new TableItem(table, SWT.NULL);
+			item.setText(0, "" + index);
+			item.setText(1, partName);
+			item.setText(2, colorCode.toString() + "(" + colorCode.getValue()
+					+ ")");
+			item.setText(3, "" + qty);
+
+		}
+		for (int loopIndex = 0; loopIndex < titles.length; loopIndex++) {
+			table.getColumn(loopIndex).pack();
+		}
+		table.setVisible(true);
+	}
+
+	private HashMap<String, Integer> numOfSamePartMap;
+	private ArrayList<String> partNameList;
+	private ArrayList<LDrawColorT> partColorList;
+
+	private void updatePartList() {
+		ArrayList<LDrawPart> partList = MOCBuilder.getInstance()
+				.getAllPartInFile();
+		Collections.sort(partList, new Comparator<LDrawPart>() {
+			@Override
+			public int compare(LDrawPart o1, LDrawPart o2) {
+				int retValue = o1.displayName().compareTo(o2.displayName());
+				if (retValue == 0)
+					retValue = o1
+							.getLDrawColor()
+							.colorCode()
+							.toString()
+							.compareTo(
+									o2.getLDrawColor().colorCode().toString());
+				return retValue;
+			}
+		});
+		numOfSamePartMap = new HashMap<String, Integer>();
+		partNameList = new ArrayList<String>();
+		partColorList = new ArrayList<LDrawColorT>();
+		for (LDrawPart part : partList) {
+			String partName = LDrawUtilities.excludeExtensionFromPartName(
+					part.displayName()).toLowerCase();
+			String partColor = part.getLDrawColor().getColorCode().toString();
+			String key = partName + partColor;
+			if (numOfSamePartMap.containsKey(key)) {
+				numOfSamePartMap.put(key, numOfSamePartMap.get(key) + 1);
+			} else {
+				numOfSamePartMap.put(key, 1);
+				partNameList.add(partName);
+				partColorList.add(part.getLDrawColor().getColorCode());
+			}
+		}
+	}
+
+	@Override
+	public void receiveNotification(NotificationMessageT messageType,
+			INotificationMessage msg) {
+		updatePartList();
+		Display.getDefault().asyncExec(new Runnable(){
+
+			@Override
+			public void run() {
+				createTable();				
+			}			
+		});		
+	}
+}

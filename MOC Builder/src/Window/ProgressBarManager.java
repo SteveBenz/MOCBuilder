@@ -1,0 +1,54 @@
+package Window;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.ProgressBar;
+
+public class ProgressBarManager {
+	private static ProgressBarManager _instance = null;
+
+	private ProgressBarManager() {
+		progressbarList = new ArrayList<ProgressBar>();
+	}
+
+	public synchronized static ProgressBarManager getInstance() {
+		if (_instance == null)
+			_instance = new ProgressBarManager();
+		return _instance;
+	}
+
+	List<ProgressBar> progressbarList;
+
+	public void add(ProgressBar pb) {
+		progressbarList.add(pb);
+	}
+
+	public void setProgress(final int value) {
+		if (Display.getDefault().isDisposed())
+			return;
+		Display.getDefault().asyncExec(new Runnable() {
+			@Override
+			public void run() {
+				if (value < 0)
+					for (ProgressBar pb : progressbarList) {
+						if (pb.isDisposed() == false)
+							pb.setVisible(false);
+					}
+				else
+					for (ProgressBar pb : progressbarList) {
+						if (pb.isDisposed() == false) {
+							pb.setVisible(true);
+							pb.setSelection(value);
+						}
+					}
+			}
+		});
+
+	}
+
+	public void remove(ProgressBar pb) {
+		progressbarList.remove(pb);
+	}
+}

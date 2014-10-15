@@ -1,0 +1,419 @@
+package Builder;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+import BrickControlGuide.BrickMovementGuideRenderer;
+import Command.LDrawPart;
+import Common.Box2;
+import Common.Box3;
+import Common.Matrix4;
+import Common.Size2;
+import Common.Vector2f;
+import Common.Vector3f;
+import Connectivity.Connectivity;
+import Connectivity.ConnectivityManager;
+import Connectivity.ConnectivityTestResultT;
+import Connectivity.GlobalConnectivityManager;
+import Connectivity.Hole;
+import Connectivity.ICustom2DField;
+import Connectivity.MatrixItem;
+import LDraw.Support.MatrixMath;
+import LDraw.Support.type.LDrawGridTypeT;
+import Notification.LDrawPartSelect;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+import Window.MOCBuilder;
+
+public class BrickSelectionManager {
+	private static BrickSelectionManager _instance = null;
+
+	public synchronized static BrickSelectionManager getInstance() {
+		if (_instance == null)
+			_instance = new BrickSelectionManager();
+		return _instance;
+	}
+
+	private BrickGroupForTransform selectedParts = null;
+	private HashMap<LDrawPart, Matrix4> startTransformMatrixMap = null;
+
+	private HashMap<LDrawPart, Matrix4> initialTransformMatrixMap = null;
+	private ArrayList<LDrawPart> partList;
+
+	private HashMap<LDrawPart, ArrayList<Vector2f>> projectedPartVerticesMap;
+
+	private ConnectivityManager connectivityManager = new ConnectivityManager();
+
+	private Lock lock = null;
+
+	private BrickSelectionManager() {
+		selectedParts = new BrickGroupForTransform();
+		startTransformMatrixMap = new HashMap<LDrawPart, Matrix4>();
+		initialTransformMatrixMap = new HashMap<LDrawPart, Matrix4>();
+		partList = new ArrayList<LDrawPart>();
+		projectedPartVerticesMap = new HashMap<LDrawPart, ArrayList<Vector2f>>();
+		lock = new ReentrantLock(true);
+	}
+
+	public void addPart(LDrawPart part, boolean updateProjectionMap) {
+		lock.lock();
+		partList.add(part);
+		lock.unlock();
+		if (updateProjectionMap)
+			updateScreenProjectionVerticesMap(part);
+	}
+
+	public void addPartToSelection(LDrawPart part) {
+		addPartToSelection(part, true);
+	}
+
+	public void addPartToSelection(LDrawPart part,
+			boolean updateConnectivityMatrix) {
+		if (part.isHidden())
+			return;
+
+		lock.lock();
+		if (selectedParts.contains(part) == false) {
+			selectedParts.addPart(part);
+			part.isDraggingPart(true);
+			part.setSelected(true);
+			if (updateConnectivityMatrix) {
+				GlobalConnectivityManager.getInstance()
+						.updateMatrix(part, true);
+				updateScreenProjectionVerticesMap(part);
+			}
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartSelected,
+					new LDrawPartSelect(part));
+		}
+		lock.unlock();
+
+		startTransformMatrixMap.put(part, part.transformationMatrix());
+		initialTransformMatrixMap.put(part, part.transformationMatrix());
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedReDraw);
+	}
+
+	public void clearAllPart(boolean updateConnectivity) {
+		lock.lock();
+		partList.clear();
+		selectedParts.clear();
+		if (updateConnectivity) {
+			GlobalConnectivityManager.getInstance().updateMatrixAll();
+			updateScreenProjectionVerticesMapAll();
+		}
+		lock.unlock();
+	}
+
+	public void clearSelection() {
+		clearSelection(true);
+	}
+
+	public void clearSelection(boolean updateConnectivityMatrix) {
+		// System.out.println("Clear BrickSelectionManager: "
+		// + updateConnectivityMatrix);
+		if (isEmpty())
+			return;
+		// ArrayList<LDrawPart> copy = getSelectedPartList();
+		lock.lock();
+		for (LDrawPart part : selectedParts.getPartList()) {
+			part.setSelected(false);
+			part.isDraggingPart(false);
+			GlobalConnectivityManager.getInstance().updateMatrix(part);
+		}
+		selectedParts.clear();
+		lock.unlock();
+		BrickMovementGuideRenderer.getInstance().setLDrawPart(null);
+		BrickMovementGuideRenderer.getInstance().clear();
+		updateScreenProjectionVerticesMapAll();
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.LDrawPartSelected);
+
+		connectivityManager.clear();
+
+	}
+
+	public boolean containsInSelection(LDrawPart directive) {
+		boolean isContains = false;
+		lock.lock();
+		isContains = selectedParts.contains(directive);
+		lock.unlock();
+		return isContains;
+	}
+
+	public Matrix4 getInitialMoveTransformMatrix(LDrawPart part) {
+		if (initialTransformMatrixMap.containsKey(part))
+			return initialTransformMatrixMap.get(part);
+		return part.transformationMatrix();
+	}
+
+	public int getNumOfSelectedParts() {
+		return selectedParts.size();
+	}
+
+	public ArrayList<LDrawPart> getSelectedPartList() {
+		lock.lock();
+		ArrayList<LDrawPart> copy = new ArrayList<LDrawPart>(
+				selectedParts.getPartList());
+		lock.unlock();
+		return copy;
+	}
+
+	public Vector3f getSelectedPartsCenter() {
+		lock.lock();
+		Vector3f retCenter = new Vector3f(0, 0, 0);
+		for (LDrawPart part : selectedParts.getPartList()) {
+			Vector3f pos = new Vector3f(part.position());
+
+			retCenter = retCenter.add(pos);
+		}
+		retCenter = retCenter.div((float) selectedParts.size());
+		lock.unlock();
+
+		return retCenter;
+	}
+
+	public Matrix4 getStartMoveTransformMatrix(LDrawPart part) {
+		if (startTransformMatrixMap.containsKey(part))
+			return startTransformMatrixMap.get(part);
+		return part.transformationMatrix();
+	}
+
+	public boolean isAllSelectedPartConnectible() {
+		lock.lock();
+		boolean isAllConnectible = true;
+		if (BuilderConfigurationManager.getInstance().isUseConnectivity() == true) {
+			for (LDrawPart directive : selectedParts.getPartList()) {
+				if (LDrawPart.class.isInstance(directive))
+					if (GlobalConnectivityManager.getInstance()
+							.isConnectable((LDrawPart) directive)
+							.getResultType() == ConnectivityTestResultT.False) {
+						isAllConnectible = false;
+						break;
+					}
+			}
+		}
+		lock.unlock();
+		return isAllConnectible;
+	}
+
+	public boolean isEmpty() {
+		return selectedParts.isEmpty();
+	}
+
+	public boolean isTheOnlySelectedPart(LDrawPart directive) {
+		boolean isTrue = false;
+		lock.lock();
+		if (selectedParts.size() == 1 && selectedParts.contains(directive))
+			isTrue = true;
+		lock.unlock();
+		return isTrue;
+	}
+
+	public void moveSelectedPartBy(LDrawPart pointingPart) {
+		selectedParts.applyTransform(pointingPart,
+				pointingPart.transformationMatrix());
+	}
+
+	public void removePart(LDrawPart part) {
+		lock.lock();
+		part.isDraggingPart(false);
+		part.setSelected(false);
+		selectedParts.removePart(part);
+		partList.remove(part);
+		connectivityManager.removePart(part);
+		lock.unlock();
+	}
+
+	public void removePartFromSelection(LDrawPart part) {
+		removePartFromSelection(part, true);
+	}
+
+	public void removePartFromSelection(LDrawPart part,
+			boolean updateConnectivity) {
+		lock.lock();
+		if (selectedParts.contains(part) == true) {
+			selectedParts.removePart(part);
+			part.isDraggingPart(false);
+			part.setSelected(false);
+			if (updateConnectivity) {
+				GlobalConnectivityManager.getInstance().updateMatrix(part);
+			}
+
+			connectivityManager.removePart(part);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawPartSelected);
+		}
+		lock.unlock();
+	}
+
+	public void selectByDragging(Box2 bounds) {
+		// long nano = System.nanoTime();
+		Vector2f origin = bounds.origin;
+		Size2 size = bounds.size;
+		float max_x, max_y;
+		max_x = origin.getX() + size.getWidth();
+		max_y = origin.getY() + size.getHeight();
+
+		for (LDrawPart part : partList) {
+			if (part.isPartDataExist() == false)
+				continue;
+			ArrayList<Vector2f> projectedVertices = projectedPartVerticesMap
+					.get(part);
+
+			if (projectedVertices == null)
+				continue;
+
+			boolean isAllSmallerThanBoundsX = true;
+			boolean isAllSmallerThanBoundsY = true;
+			boolean isAllLargerThanBoundsX = true;
+			boolean isAllLargerThanBoundsY = true;
+			for (Vector2f pos : projectedVertices) {
+				if (pos.getX() > origin.getX())
+					isAllSmallerThanBoundsX = false;
+				if (pos.getY() > origin.getY())
+					isAllSmallerThanBoundsY = false;
+				if (pos.getX() < max_x)
+					isAllLargerThanBoundsX = false;
+				if (pos.getY() < max_y)
+					isAllLargerThanBoundsY = false;
+			}
+			if (isAllLargerThanBoundsX || isAllLargerThanBoundsY
+					|| isAllSmallerThanBoundsX || isAllSmallerThanBoundsY) {
+				if (part.isSelected())
+					removePartFromSelection(part, true);
+				continue;
+			}
+
+			Vector2f[] poly = new Vector2f[3];
+			boolean isIntersected = false;
+			for (int i = 0; i < 6; i++) {
+				for (int j = i + 1; j < 7; j++) {
+					for (int k = j + 1; k < 8; k++) {
+						poly[0] = projectedVertices.get(i);
+						poly[1] = projectedVertices.get(j);
+						poly[2] = projectedVertices.get(k);
+						if (MatrixMath.V2BoxIntersectsPolygon(bounds, poly, 3)) {
+							isIntersected = true;
+							break;
+						}
+					}
+					if (isIntersected)
+						break;
+				}
+				if (isIntersected)
+					break;
+			}
+			if (isIntersected == true) {
+				if (part.isSelected() == false)
+					addPartToSelection(part, true);
+			} else if (part.isSelected())
+				removePartFromSelection(part, true);
+		}
+		// System.out.println("selectByDragging: " + (System.nanoTime() -
+		// nano));
+	}
+
+	public void updateScreenProjectionVerticesMap(LDrawPart part) {
+		// System.out.println("updateScreenProjectionVerticesMap");
+		Box3 boundingBox = part.boundingBox3();
+		if (boundingBox != null) {
+			Vector3f[] vertices = part.getCachedOOB();
+			ArrayList<Vector2f> projectedVertices = projectedPartVerticesMap
+					.get(part);
+			if (projectedVertices == null)
+				projectedVertices = new ArrayList<Vector2f>();
+			else
+				projectedVertices.clear();
+
+			MainCamera camera = MOCBuilder.getInstance().getCamera();
+			for (int i = 0; i < vertices.length; i++) {
+				Vector2f pos = camera.getWorldToScreenPos(vertices[i]);
+				if (pos == null) {
+					projectedVertices.clear();
+					break;
+				}
+				projectedVertices.add(pos);
+			}
+			if (projectedVertices.size() != 0)
+				projectedPartVerticesMap.put(part, projectedVertices);
+		}
+	}
+
+	public void updateScreenProjectionVerticesMapAll() {
+		// System.out.println("updateScreenProjectionVerticesMap All");
+		MOCBuilder.getInstance().getCamera().tickle();
+		projectedPartVerticesMap.clear();
+		for (LDrawPart part : partList) {
+			updateScreenProjectionVerticesMap(part);
+		}
+	}
+
+	public void updateStartMoveTransformMatrixMap() {
+		// System.out.println("Updated");
+		lock.lock();
+		for (LDrawPart part : selectedParts.getPartList()) {
+			startTransformMatrixMap.put(part, part.transformationMatrix());
+		}
+		lock.unlock();
+	}
+
+	public BrickGroupForTransform getBrickGroupForTransform() {
+		return selectedParts;
+	}
+
+	public ConnectivityManager getConnectivityManager(Vector3f hittedPos) {
+		// System.out.println("getConnectivityManager");
+		connectivityManager.clear();
+		for (LDrawPart part : selectedParts.getPartList()) {
+			if (part.getConnectivityList() == null)
+				continue;
+			for (Connectivity conn : part.getConnectivityList()) {
+				conn.updateConnectivityOrientationInfo();
+				if (conn instanceof ICustom2DField)
+					continue;
+				if (conn.getCurrentPos(part.transformationMatrix())
+						.sub(hittedPos).length() <= LDrawGridTypeT.CoarseX3
+						.getYValue())
+					connectivityManager.addConn(conn);
+			}
+
+			if (part.getConnectivityMatrixItemList() == null)
+				continue;
+			for (MatrixItem matrixItem : part.getConnectivityMatrixItemList()) {
+				matrixItem.updateConnectivityOrientationInfo();
+				if (matrixItem.getRowIndex() % 2 == 0)
+					continue;
+				if (matrixItem.getColumnIndex() % 2 == 0)
+					continue;
+				if (matrixItem.getCurrentPos().sub(hittedPos).length() <= LDrawGridTypeT.CoarseX3
+						.getYValue())
+					connectivityManager.addMatrixItem(matrixItem);
+			}
+
+		}
+		return connectivityManager;
+	}
+
+	public LDrawPart getFirstPart() {
+		return selectedParts.getPartList().get(0);
+	}
+
+	public LDrawPart getLastPart() {
+		return selectedParts.getPartList().get(
+				selectedParts.getPartList().size() - 1);
+
+	}
+
+	public boolean isSelectSingleBrick() {
+		if (selectedParts.getPartList().size() == 1)
+			return true;
+		else
+			return false;
+	}
+}

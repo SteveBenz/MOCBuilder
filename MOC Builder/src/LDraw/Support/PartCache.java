@@ -1,0 +1,604 @@
+package LDraw.Support;
+
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.FilenameFilter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.Map.Entry;
+
+import Builder.BuilderConfigurationManager;
+import Exports.CompatiblePartManager;
+import Exports.PartDomainT;
+import Exports.PartIds;
+import Resource.ResourceManager;
+
+public class PartCache implements Comparator<String> {
+	private static PartCache _instance = null;
+
+	final static String CACHENAME = "/Resource/brick.list";
+	final static String CATEGORYPATH = "/Resource/category.list";
+	final static String FILEPREFIX = "FILE:";
+
+	public synchronized static PartCache getInstance() {
+		if (_instance == null)
+			_instance = new PartCache(BuilderConfigurationManager
+					.getInstance().getLDrawDirectory()
+					+ LDrawPaths.PARTS_DIRECTORY_NAME);
+		return _instance;
+	}
+
+	private HashMap<String, ArrayList<String>> categoryToFileCache;
+	private HashMap<String, String> fileToBrickName;
+	private HashMap<String, HashMap<String, ArrayList<String>>> searchCacheTable;
+
+	private HashMap<String, String> aliasPartNameMap;
+	private ArrayList<String> categoryList;
+
+	boolean isSearchCacheTalbeReady = false;
+
+	private PartCache(String partsPath) {
+		categoryToFileCache = new HashMap<String, ArrayList<String>>();
+		fileToBrickName = new HashMap<String, String>();
+		aliasPartNameMap = new HashMap<String, String>();
+		loadCategoryFromFile();
+		loadPartInfoToCache(partsPath);
+
+		searchCacheTable = new HashMap<String, HashMap<String, ArrayList<String>>>();
+		initSearchCacheTable();
+
+	}
+
+	public void reload() {
+		loadCategoryFromFile();
+		loadPartInfoToCache(BuilderConfigurationManager.getInstance()
+				.getLDrawDirectory() + LDrawPaths.PARTS_DIRECTORY_NAME);
+	}
+
+	private void initSearchCacheTable() {
+		new Thread(new Runnable() {
+			@Override
+			public void run() {
+				String searchText = null;
+				HashMap<String, ArrayList<String>> map;
+				for (int i = 0; i < 9; i++) {
+					searchText = Character.toString((char) ('1' + i));
+					if (searchCacheTable.containsKey(searchText) == false) {
+						map = new HashMap<String, ArrayList<String>>();
+						addCacheItemForSearchCacheTable(map, searchText);
+						searchCacheTable.put(searchText, map);
+					}
+				}
+				for (int i = 0; i < 26; i++) {
+					searchText = Character.toString((char) ('A' + i));
+				}
+				System.out.println("search Cache table is ready");
+				isSearchCacheTalbeReady = true;
+			}
+
+		}).start();
+	}
+
+	private void addCacheItemForSearchCacheTable(
+			HashMap<String, ArrayList<String>> map, String searchText) {
+		for (String category : getCategories())
+			map.put(category, getPartLists(category, searchText, null));
+		String category;
+		for (int j = 0; j < 26; j++) {
+			category = Character.toString((char) ('A' + j));
+			map.put(category, getPartLists(category, searchText, null));
+		}
+	}
+
+	public ArrayList<String> getCategories() {
+
+		return categoryList;
+	}
+
+	public ArrayList<String> getPartLists(String searchText,
+			PartDomainT searchDomain) {
+		ArrayList<String> resultList = new ArrayList<String>();
+		for (String category : getCategories())
+			resultList.addAll(getPartLists(category, searchText, searchDomain));
+		String category;
+		for (int j = 0; j < 26; j++) {
+			category = Character.toString((char) ('A' + j));
+			resultList.addAll(getPartLists(category, searchText, searchDomain));
+		}
+		return resultList;
+	}
+
+	public ArrayList<String> getPartLists(String category, String searchText,
+			PartDomainT searchDomain) {
+		if (searchText != null) {
+			searchText = searchText.replaceAll("  ", " ");
+			searchText = searchText.trim();
+		}
+		ArrayList<String> resultTemp = getPartLists2(category, searchText);
+		if (resultTemp == null)
+			resultTemp = new ArrayList<String>();
+		ArrayList<String> result = new ArrayList<String>();
+
+		ArrayList<String> tempList = null;
+		if (searchText != null && searchText.contains("x")) {
+			searchText = searchText.replaceAll("x", " x ");
+			searchText = searchText.replaceAll("  ", " ");
+			searchText = searchText.trim();
+			tempList = getPartLists2(category, searchText);
+			for (String item : tempList)
+				if (resultTemp.contains(item) == false)
+					resultTemp.add(item);
+			Collections.sort(resultTemp, this);
+		}
+
+		// filtering for searchDomain
+		if (searchDomain == null)
+			return resultTemp;
+
+		if (searchDomain == PartDomainT.LDRAW) {
+			for (String fileName : resultTemp) {
+				String brickName = fileToBrickName.get(fileName).toLowerCase();
+				fileName = fileName.toLowerCase();
+				boolean isMatched = false;
+
+				if (brickName.contains(searchText)
+						|| fileName.startsWith(searchText)
+						|| getRepresentPartName(fileName)
+								.startsWith(searchText))
+					isMatched = true;
+
+				if (isMatched)
+					result.add(fileName);
+			}
+		} else if (searchDomain == PartDomainT.BRICKLINK) {
+			for (String fileName : resultTemp) {
+				String brickName = fileToBrickName.get(fileName).toLowerCase();
+				fileName = fileName.toLowerCase();
+				boolean isMatched = false;
+				PartIds ids = CompatiblePartManager.getInstance().getPartIds(
+						PartDomainT.LDRAW,
+						LDrawUtilities.excludeExtensionFromPartName(fileName));
+				if (ids != null) {
+					if (ids.getId(PartDomainT.BRICKLINK) != null)
+						for (String id : ids.getId(PartDomainT.BRICKLINK))
+							if (id.startsWith(searchText.replaceAll(" ", ""))) {
+								isMatched = true;
+							}
+				}
+
+				if (brickName.contains(searchText))
+					isMatched = true;
+
+				if (isMatched)
+					result.add(fileName);
+			}
+		}
+
+		return result;
+	}
+
+	private ArrayList<String> getPartLists2(String category, String searchText) {
+		ArrayList<String> list = new ArrayList<String>();
+		if (isSearchCacheTalbeReady) {
+			list = getPartListsFromCache(category, searchText);
+			if (list != null) {
+				return list;
+			}
+		}
+
+		if (searchText == null || searchText.equals("")) {
+			if (category == null) {
+				return list;
+			} else {
+				if (categoryToFileCache.containsKey(category)) {
+					return categoryToFileCache.get(category);
+				}
+			}
+		} else {
+			list = new ArrayList<String>();
+			searchText = searchText.toLowerCase();
+			String brickName;
+			if (category == null) {
+				String fileName;
+				for (Entry<String, String> entry : fileToBrickName.entrySet()) {
+					brickName = entry.getValue().toLowerCase();
+					fileName = entry.getKey().toLowerCase();
+
+					boolean isMatched = false;
+
+					if (brickName.contains(searchText)
+							|| fileName.startsWith(searchText)
+							|| getRepresentPartName(fileName).startsWith(
+									searchText))
+						isMatched = true;
+					PartIds ids = CompatiblePartManager
+							.getInstance()
+							.getPartIds(
+									PartDomainT.LDRAW,
+									LDrawUtilities
+											.excludeExtensionFromPartName(fileName));
+					if (ids != null)
+						if (ids.getId(PartDomainT.BRICKLINK) != null)
+							for (String id : ids.getId(PartDomainT.BRICKLINK))
+								if (id.startsWith(searchText))
+									isMatched = true;
+					if (isMatched)
+						list.add(fileName);
+				}
+			} else {
+				if (categoryToFileCache.containsKey(category)) {
+					ArrayList<String> searchDomain = null;
+					if (isSearchCacheTalbeReady)
+						for (int i = searchText.length() - 1; i > 0; i--) {
+							searchDomain = getPartListsFromCache(category,
+									searchText.substring(0, i));
+							if (searchDomain != null)
+								break;
+						}
+					if (searchDomain == null)
+						searchDomain = categoryToFileCache.get(category);
+
+					for (String fileName : searchDomain) {
+						brickName = fileToBrickName.get(fileName).toLowerCase();
+						fileName = fileName.toLowerCase();
+						boolean isMatched = false;
+
+						if (brickName.contains(searchText)
+								|| fileName.startsWith(searchText)
+								|| getRepresentPartName(fileName).startsWith(
+										searchText))
+							isMatched = true;
+
+						PartIds ids = CompatiblePartManager
+								.getInstance()
+								.getPartIds(
+										PartDomainT.LDRAW,
+										LDrawUtilities
+												.excludeExtensionFromPartName(fileName));
+						if (ids != null) {
+							if (ids.getId(PartDomainT.BRICKLINK) != null)
+								for (String id : ids
+										.getId(PartDomainT.BRICKLINK))
+									if (id.startsWith(searchText))
+										isMatched = true;
+						}
+						if (isMatched)
+							list.add(fileName);
+					}
+				}
+			}
+			Collections.sort(list, this);
+		}
+
+		addSearchResultToSearchCacheTable(category, searchText, list);
+		return list;
+	}
+
+	private void addSearchResultToSearchCacheTable(String category,
+			String searchText, ArrayList<String> searchResult) {
+		if (isSearchCacheTalbeReady == false)
+			return;
+		if (searchText == null || searchText.equals(""))
+			return;
+		if (category == null || category.equals(""))
+			return;
+		HashMap<String, ArrayList<String>> map = null;
+		if (searchCacheTable.containsKey(searchText))
+			map = searchCacheTable.get(searchText);
+		else {
+			map = new HashMap<String, ArrayList<String>>();
+			searchCacheTable.put(searchText, map);
+		}
+		if (map.containsKey(category) == false)
+			map.put(category, searchResult);
+
+	}
+
+	private ArrayList<String> getPartListsFromCache(String category,
+			String searchText) {
+		if (searchCacheTable.containsKey(searchText)) {
+			HashMap<String, ArrayList<String>> partMap = searchCacheTable
+					.get(searchText);
+			return partMap.get(category);
+		}
+		return null;
+	}
+
+	public String getPartName(String fileName) {
+		return fileToBrickName.get(fileName);
+	}
+
+	public boolean contains(String key) {
+		return fileToBrickName.containsKey(key);
+	}
+
+	private void loadToPartCachePerCategory() {
+		for (String categoryName : categoryList) {
+			categoryToFileCache.put(categoryName, new ArrayList<String>());
+		}
+
+		String brickDescription, fileName;
+		for (Entry<String, String> entry : fileToBrickName.entrySet()) {
+			fileName = entry.getKey();
+			brickDescription = entry.getValue().trim();
+
+			categoryToFileCache.get("All").add(fileName);
+			for (String categoryName : categoryList) {
+				if (brickDescription.startsWith(categoryName)) {
+					categoryToFileCache.get(categoryName).add(fileName);
+				}
+			}
+		}
+		for (ArrayList<String> list : categoryToFileCache.values())
+			Collections.sort(list, this);
+
+	}
+
+	private void loadPartInfoToCache(String partsPath) {
+		HashMap<String, String> fileCache = new HashMap<String, String>();
+		BufferedReader reader = null;
+		String fileName, partDescription, alias = "";
+		File cache = new File(System.getProperty("user.dir") + CACHENAME);
+		if (cache.exists()) {
+			try {
+				reader = new BufferedReader(new FileReader(cache));
+				while ((fileName = reader.readLine()) != null
+						&& !fileName.equals("")) {
+					if (fileName.startsWith(FILEPREFIX)) {
+						partDescription = reader.readLine().replaceAll("\\s+",
+								" ");
+						fileCache.put(fileName.substring(FILEPREFIX.length()),
+								partDescription);
+
+						alias = reader.readLine().replaceAll("\\s+", " ");
+						if (alias != null && alias.equals("") == false
+								&& alias.equals("null") == false) {
+							// System.out.println("Alias: "+fileName.substring(FILEPREFIX.length())+
+							// "->"+alias);
+							aliasPartNameMap.put(
+									fileName.substring(FILEPREFIX.length()),
+									alias);
+						}
+					} else {
+						reader.close();
+						cache.delete();
+						fileCache.clear();
+						break;
+					}
+				}
+				reader.close();
+			} catch (Exception e) {
+				e.printStackTrace();
+				try {
+					reader.close();
+				} catch (Exception e2) {
+					e2.printStackTrace();
+				}
+				cache.delete();
+				fileCache.clear();
+			}
+		}
+		try {
+			InputStream is = ResourceManager.getInstance().getInputStream(
+					CACHENAME);
+			if (is != null) {
+				reader = new BufferedReader(new InputStreamReader(is));
+				while ((fileName = reader.readLine()) != null
+						&& !fileName.equals("")) {
+					if (fileName.startsWith(FILEPREFIX)) {
+						fileName = fileName.substring(FILEPREFIX.length());
+						if (!fileCache.containsKey(fileName)) {
+							partDescription = reader.readLine().replaceAll(
+									"\\s+", " ");
+							fileCache.put(fileName, partDescription);
+
+							alias = reader.readLine().replaceAll("\\s+", " ");
+							if (alias != null && alias.equals("") == false) {
+								System.out.println("Alias: " + fileName + "->"
+										+ alias);
+								aliasPartNameMap.put(fileName, alias);
+							}
+						} else {
+							reader.readLine();
+						}
+					} else {
+						reader.close();
+						break;
+					}
+				}
+				reader.close();
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			try {
+				reader.close();
+			} catch (Exception e2) {
+				e2.printStackTrace();
+			}
+		}
+
+		File parts = new File(partsPath);
+		File[] lists = parts.listFiles(new FilenameFilter() {
+
+			@Override
+			public boolean accept(File dir, String name) {
+				return name.endsWith("dat");
+			}
+		});
+		if (lists == null) {
+			return;
+		}
+
+		boolean readOnly = false;
+		try {
+			BufferedWriter writer = null;
+			for (File file : lists) {
+				fileName = file.getName();
+				partDescription = fileCache.get(fileName);
+				if (partDescription == null) {
+					reader = new BufferedReader(new FileReader(file));
+					partDescription = reader.readLine().substring(2)
+							.replaceAll("\\s+", " ");
+					if (partDescription.startsWith("~Moved")) {
+						alias = partDescription.split("\\s+")[2] + ".dat";
+						aliasPartNameMap.put(fileName, alias);
+					} else if (partDescription.startsWith("=")) {
+						String line = "";
+						while ((line = reader.readLine()) != null) {
+							if (line.startsWith("0 // Alias of ")) {
+								if (line.contains(","))
+									alias = line.substring(
+											"0 // Alias of ".length(),
+											line.indexOf(","))
+											+ ".dat";
+								else if (line.contains(";"))
+									alias = line.substring(
+											"0 // Alias of ".length(),
+											line.indexOf(";"))
+											+ ".dat";
+								else
+									alias = line.substring("0 // Alias of "
+											.length()) + ".dat";
+								aliasPartNameMap.put(fileName, alias);
+								break;
+							}
+						}
+					} else {
+						alias = "";
+					}
+
+					reader.close();
+					if (!readOnly) {
+						try {
+							if (writer == null) {
+								writer = new BufferedWriter(new FileWriter(
+										cache, true));
+							}
+							writer.write(FILEPREFIX + fileName);
+							writer.newLine();
+							writer.write(partDescription);
+							writer.newLine();
+							writer.write(alias);
+							writer.newLine();
+						} catch (Exception e) {
+							readOnly = true;
+						}
+					}
+				}
+				fileToBrickName.put(fileName, partDescription);
+			}
+			if (writer != null)
+				writer.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		loadToPartCachePerCategory();
+	}
+
+	@Override
+	public int compare(String o1, String o2) {
+		return fileToBrickName.get(o1).compareTo(fileToBrickName.get(o2));
+	}
+
+	public String getRepresentPartName(String partName) {
+		String temp = partName;
+		String representName = partName;
+		HashMap<String, Boolean> history = new HashMap<String, Boolean>();
+		history.put(partName, true);
+		while ((temp = aliasPartNameMap.get(representName)) != null) {
+			if (history.containsKey(temp))
+				break;
+			representName = temp;
+			history.put(temp, true);
+		}
+		history = null;
+		return representName;
+	}
+
+	public ArrayList<String> getAllParts() {
+		ArrayList<String> retList = new ArrayList<String>();
+		for (String partName : fileToBrickName.keySet())
+			retList.add(LDrawUtilities.excludeExtensionFromPartName(partName));
+		return retList;
+	}
+
+	public void reInit() {
+		_instance = null;
+	}
+
+	public void loadCategoryFromCode() {
+		if (categoryList == null)
+			categoryList = new ArrayList<String>();
+		else
+			categoryList.clear();
+
+		categoryList.add("All");
+		categoryList.add("Brick");
+		categoryList.add("Plate");
+		categoryList.add("Tile");
+		categoryList.add("Slope");
+		categoryList.add("Minifig");
+		categoryList.add("Baseplate");
+		categoryList.add("Electric");
+		categoryList.add("Technic");
+		categoryList.add("Technic Axle");
+		categoryList.add("Train");
+		categoryList.add("Hinge");
+	}
+
+	public void loadCategoryFromFile() {
+		if (categoryList == null)
+			categoryList = new ArrayList<String>();
+		else
+			categoryList.clear();
+
+		File categoryFile = new File(System.getProperty("user.dir")
+				+ CATEGORYPATH);
+		if (categoryFile.exists()) {
+			try {
+				BufferedReader reader = new BufferedReader(new FileReader(
+						categoryFile));
+				String line;
+				while ((line = reader.readLine()) != null) {
+					if (line.trim().equals(""))
+						continue;
+					categoryList.add(line.trim());
+				}
+				reader.close();
+			} catch (Exception e) {
+				e.printStackTrace();
+				categoryFile.delete();
+			}
+		} else {
+			loadCategoryFromCode();
+			writeCategoryToFile();
+		}
+	}
+
+	public void writeCategoryToFile() {
+		File categoryFile = new File(System.getProperty("user.dir")
+				+ CATEGORYPATH);
+		String contents = "";
+		for (String categoryName : categoryList)
+			contents += categoryName + "\r\n";
+
+		try {
+			FileWriter fw = new FileWriter(categoryFile);
+			fw.write(contents);
+			fw.flush();
+			fw.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+}

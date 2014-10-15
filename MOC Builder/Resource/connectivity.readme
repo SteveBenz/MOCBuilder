@@ -1,0 +1,29 @@
+[Content]
+"Main-Category" "Sub-Category" "Transformation" "Sub-Contents" "Filename"
+
+Ex) 9 0 -1.000000 -0.000000 -0.000000 -0.000000 0.000000 1.000000 -0.000000 1.000000 -0.000000 0.000000 12.000000 0.000001 9.750000 9.750000 11.750000 3005.dat
+
+9 = Main-Category
+
+0 = Sub-Category
+
+-1.000000 ~ 0.000001 = Transformation
+
+9.750000 9.750000 11.750000 = Sub-Contents
+
+3005.dat = Filename
+
+[Main-Category]
+Axle = 0, Ball = 1, Hole = 2, Stud = 3, Fixed = 4, Gear = 5, Hinge = 6, Rail = 7, Slider = 8, CollisionBox = 9, BoundingAABB = 10, Comment = 11, Import = 12
+
+[Sub-Category]
+Main-Category 내부에서 비교를 위해 사용되는 값
+
+[Transformation] (Main-Category가 9 이하인 경우만 사용함)
+Connectivity의 시작 위치 
+
+[Sub-Contents]
+각 Connectivity가 가지고 있는 세부적인 특징
+
+[Filename]
+해당되는 Ldraw filename

@@ -1,0 +1,92 @@
+package Builder;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import Command.LDrawPart;
+import Common.Vector3f;
+import LDraw.Support.LDrawDirective;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+import UndoRedo.CopyDirectivesAction;
+import UndoRedo.LDrawUndoRedoManager;
+import Window.MOCBuilder;
+
+public class CopyNPasteManager {
+	private static CopyNPasteManager _instance = null;
+
+	public synchronized static CopyNPasteManager getInstance() {
+		if (_instance == null)
+			_instance = new CopyNPasteManager();
+
+		return _instance;
+	}
+
+	private CopyNPasteManager() {
+		copyPartList = new ArrayList<LDrawPart>();
+	}
+
+	private ArrayList<LDrawPart> copyPartList;
+
+	public void setCopyList(List<LDrawPart> list) {
+		copyPartList.clear();
+		for (LDrawPart part : BrickSelectionManager.getInstance()
+				.getSelectedPartList()) {
+			LDrawPart copy = new LDrawPart();
+			copy.initWithPartName(part.displayName(), new Vector3f());
+			copy.setTransformationMatrix(part.transformationMatrix());
+			copy.setLDrawColor(part.getLDrawColor());
+			copyPartList.add(copy);
+		}
+		BrickSelectionManager.getInstance().clearSelection();
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.CopyNPasteManagerUpdated);
+	}
+
+	public void setCutList(List<LDrawPart> list) {
+		copyPartList.clear();
+		for (LDrawPart part : BrickSelectionManager.getInstance()
+				.getSelectedPartList()) {
+			LDrawPart copy = new LDrawPart();
+			copy.initWithPartName(part.displayName(), new Vector3f());
+			copy.setTransformationMatrix(part.transformationMatrix());
+			copy.setLDrawColor(part.getLDrawColor());
+			copyPartList.add(copy);
+		}
+		MOCBuilder.getInstance().removeSelectedDirective();
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.CopyNPasteManagerUpdated);
+	}
+
+	public void paste(Vector3f pos) {
+		if (copyPartList.size() == 0)
+			return;
+		BrickSelectionManager selectionManager = BrickSelectionManager
+				.getInstance();
+		MOCBuilder builder = MOCBuilder.getInstance();
+
+		selectionManager.clearSelection();
+		for (LDrawPart part : copyPartList) {
+			LDrawPart copy = new LDrawPart();
+			copy.initWithPartName(part.displayName(), new Vector3f());
+			copy.setTransformationMatrix(part.transformationMatrix());
+			copy.setLDrawColor(part.getLDrawColor());
+
+			builder.addDirectiveToWorkingFile(copy);
+			selectionManager.addPartToSelection(copy);
+		}
+		Vector3f posDiff = pos.sub(selectionManager.getSelectedPartsCenter());
+		LDrawPart part = selectionManager.getSelectedPartList().get(0);
+		builder.moveDirectiveBy(part, posDiff);
+		selectionManager.moveSelectedPartBy(part);
+		ArrayList<LDrawDirective> directiveList = new ArrayList<LDrawDirective>(
+				selectionManager.getSelectedPartList());
+		CopyDirectivesAction action = new CopyDirectivesAction(builder,
+				directiveList);
+		LDrawUndoRedoManager.getInstance().pushUndoAction(action);
+	}
+
+	public boolean isEmptyClipboard() {
+		return copyPartList.isEmpty();
+	}
+}

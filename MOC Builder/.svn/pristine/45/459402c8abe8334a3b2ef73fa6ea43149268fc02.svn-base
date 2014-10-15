@@ -1,0 +1,273 @@
+package LDraw.Support;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.StringTokenizer;
+
+import javax.media.opengl.GL2;
+import javax.swing.undo.UndoManager;
+
+import Command.LDrawColor;
+import Command.LDrawComment;
+
+public class LDrawMetaCommand extends LDrawDirective {
+	/**
+	 * @uml.property name="commandString"
+	 */
+	String commandString;
+
+	public LDrawMetaCommand() {
+		this.commandString = "";
+	}
+
+	// ========== initWithLines:inRange:parentGroup:
+	// ================================
+	//
+	// Purpose: Returns the LDraw directive based on lineFromFile, a single line
+	// of LDraw code from a file.
+	//
+	// directive should have the format:
+	//
+	// 0 command...
+	//
+	// This method determines and returns a subclass instance for known
+	// meta-commands. As such, the instance returned will always be of
+	// a different class, and thus will always be a different instance
+	// than the receiver.
+	//
+	// ==============================================================================
+	public LDrawDirective initWithLines(ArrayList<String> lines, Range range,
+			DispatchGroup parentGroup) {
+		super.init();
+		LDrawDirective directive = null;
+		String parsedField = null;
+		String firstLine = lines.get(range.getLocation());
+
+		int lineCode = 0;
+		boolean gotLineCode = false;
+		int metaLineStart = 0;
+		StringTokenizer strTokenizer = new StringTokenizer(firstLine);
+
+		// A malformed part could easily cause a string indexing error, which
+		// would
+		// raise an exception. We don't want this to happen here.
+		try {
+			// Read in the line code and advance past it.
+			try {
+				lineCode = Integer.parseInt(strTokenizer.nextToken());
+				gotLineCode = true;
+			} catch (Exception e) {
+				gotLineCode = false;
+			}
+
+			if (gotLineCode == true && lineCode == 0) {
+				// The first word of a meta-command should indicate the command
+				// itself, and thus the syntax of the rest of the line. However,
+				// the
+				// first word might not be a recognized command. It might not
+				// even
+				// be anything. "0\n" is perfectly valid LDraw.
+				// [scanner scanCharactersFromSet:[NSCharacterSet
+				// whitespaceCharacterSet] intoString:null];
+				// metaLineStart = [scanner scanLocation];
+				// metaLineStart = firstLine.indexOf(" ")+1;
+
+				// [scanner scanUpToCharactersFromSet:[NSCharacterSet
+				// whitespaceCharacterSet] intoString:&parsedField];
+				if(strTokenizer.hasMoreTokens())
+					parsedField = strTokenizer.nextToken();
+				else
+					parsedField ="";
+
+				// Comment?
+				if (parsedField.equals(LDrawKeywords.LDRAW_COMMENT_SLASH)
+						|| parsedField
+								.equals(LDrawKeywords.LDRAW_COMMENT_WRITE)
+						|| parsedField
+								.equals(LDrawKeywords.LDRAW_COMMENT_PRINT)) {
+					directive = new LDrawComment();
+					((LDrawComment) directive).finishParsing(strTokenizer);
+				}
+				// Color Definition?
+				else if (parsedField
+						.equals(LDrawKeywords.LDRAW_COLOR_DEFINITION)) {
+					directive = new LDrawColor();
+					((LDrawColor) directive).finishParsing(strTokenizer);
+				} else if (parsedField.equals(LDrawKeywords.BRICKBUILDER_CUSTOM_META)) {
+					directive = new LDrawCustomMetaCommand();
+					String command = firstLine.substring(metaLineStart);
+					((LDrawCustomMetaCommand)directive).setStringValue(command);
+				}
+
+				if (directive == null) {
+					// Didn't specifically recognize this metacommand. Create a
+					// non-functional generic command to record its existence.
+					directive = this;
+					String command = firstLine.substring(metaLineStart);
+
+					setStringValue(command);
+				}
+			} else if (gotLineCode == false) {
+				// This is presumably an empty line, and the following will
+				// incorrectly add a 0 linetype to it.
+				directive = this;// [self retain];
+				String command = firstLine.substring(metaLineStart);
+
+				setStringValue(command);
+			} else {
+				// nonzero linetype!
+				throw new Exception("BricksmithParseException: "
+						+ "Bad metacommand syntax");
+			}
+		} catch (Exception e) {
+			System.out.println(String.format(
+					"the meta-command %s was fatally invalid",
+					lines.get(range.getLocation())));
+			System.out.println(String.format(" raised exception %s",
+					e.getMessage()));
+		}
+
+		// The new directive should replace the receiver!
+
+		return directive;
+
+	}// end initWithLines:inRange:
+
+	
+	// ========== finishParsing:
+	// ====================================================
+	//
+	// Purpose: Subclasses override this method to finish parsing their specific
+	// syntax once -[LDrawMetaCommand initWithLines:inRange:]
+	// has determined which subclass to instantiate.
+	//
+	// Returns: YES on success; NO on a syntax error.
+	//
+	// ==============================================================================
+	// public boolean finishParsing(NSScanner *)scanner
+	// {
+	// // LDrawMetaCommand itself doesn't have any special syntax, so we
+	// shouldn't
+	// // be getting any in this method.
+	// return NO;
+	//
+	// }//end finishParsing:
+
+	// #pragma mark -
+	// #pragma mark DIRECTIVES
+	// #pragma mark -
+
+	// ========== draw:viewScale:parentColor:
+	// =======================================
+	//
+	// Purpose: Draws the part.
+	//
+	// ==============================================================================
+	public void draw(GL2 gl2, HashMap<Integer, Boolean> optionsMask, float scaleFactor, LDrawColor parentColor) {
+		// Nothing to do here.
+
+	}// end draw:viewScale:parentColor:
+
+	// ========== write
+	// =============================================================
+	//
+	// Purpose: Returns a line that can be written out to a file.
+	// Line format:
+	// 0 command...
+	//
+	// ==============================================================================
+	public String write() {
+		return String.format("%s", stringValue());
+	}// end write
+
+	// #pragma mark -
+	// #pragma mark DISPLAY
+	// #pragma mark -
+
+	// ========== browsingDescription
+	// ===============================================
+	//
+	// Purpose: Returns a representation of the directive as a short string
+	// which can be presented to the user.
+	//
+	// ==============================================================================
+	public String browsingDescription() {
+		// return NSLocalizedString(@"Unknown Metacommand", null);
+		return commandString;
+
+	}// end browsingDescription
+
+	// ========== iconName
+	// ==========================================================
+	//
+	// Purpose: Returns the name of image file used to display this kind of
+	// object, or null if there is no icon.
+	//
+	// ==============================================================================
+	public String iconName() {
+		return "Unknown";
+
+	}// end iconName
+
+	// ========== inspectorClassName
+	// ================================================
+	//
+	// Purpose: Returns the name of the class used to inspect this one.
+	//
+	// ==============================================================================
+	public String inspectorClassName() {
+		return "InspectionUnknownCommand";
+
+	}// end inspectorClassName
+
+	// #pragma mark -
+	// #pragma mark ACCESSORS
+	// #pragma mark -
+
+	// ========== setStringValue:
+	// ===================================================
+	//
+	// Purpose: updates the basic command string.
+	//
+	// ==============================================================================
+	public void setStringValue(String newString) {
+		commandString = newString;
+
+	}// end setStringValue:
+
+	// ========== stringValue
+	// =======================================================
+	//
+	// Purpose:
+	//
+	// ==============================================================================
+	public String stringValue() {
+		return commandString;
+
+	}// end stringValue
+
+	// #pragma mark -
+	// #pragma mark UTILITIES
+	// #pragma mark -
+
+	// ========== registerUndoActions
+	// ===============================================
+	//
+	// Purpose: Registers the undo actions that are unique to this subclass,
+	// not to any superclass.
+	//
+	// ==============================================================================
+	public void registerUndoActions(UndoManager undoManager) {
+		// [super registerUndoActions:undoManager];
+		//
+		// [[undoManager prepareWithInvocationTarget:self] setStringValue:[self
+		// stringValue]];
+
+		// [undoManager setActionName:NSLocalizedString(@"UndoAttributesLine",
+		// null)];
+		// (unused for this class; a plain "Undo" will probably be less
+		// confusing.)
+
+	}// end registerUndoActions:
+
+}

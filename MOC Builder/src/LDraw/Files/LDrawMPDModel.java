@@ -1,0 +1,502 @@
+package LDraw.Files;
+
+import java.io.File;
+import java.nio.CharBuffer;
+import java.util.ArrayList;
+import java.util.StringTokenizer;
+
+import javax.swing.undo.UndoManager;
+
+import LDraw.Support.DispatchGroup;
+import LDraw.Support.LDrawKeywords;
+import LDraw.Support.LDrawUtilities;
+import LDraw.Support.Range;
+import LDraw.Support.type.MessageT;
+
+import com.jogamp.common.nio.Buffers;
+
+//==============================================================================
+//
+//File:		LDrawMPDModel.h
+//
+//Purpose:		Represents a model which can be used as a submodel within a file.
+//
+//Created by Allen Smith on 2/19/05.
+//Copyright (c) 2005. All rights reserved.
+//==============================================================================
+//==============================================================================
+//
+//File:		LDrawMPDModel.m
+//
+//Purpose:		LDraw MPD (Multi-Part Document) models are the basic components 
+//				of an LDrawFile. An MPD model is a discreet collection of parts 
+//				(such as a car or a minifigure); each file can be composed of 
+//				multiple models.
+//
+//				An MPD model is an extension of a basic LDraw model, with the 
+//				addition of a name which can be used to refer to the entire 
+//				model as a single part. (This is used, for instance, to insert 
+//				the entire minifigure driver into his car.)
+//
+//				While the LDraw file format accommodates documents with only one 
+//				(non-MPD) model, Bricksmith does not make such a distinction 
+//				until the file is actually written to disk. For the sake of 
+//				simplicity, all logical models within an LDrawFile *must* be 
+//				MPD models.
+//				
+//
+//Created by Allen Smith on 2/19/05.
+//Copyright 2005. All rights reserved.
+//==============================================================================
+
+public class LDrawMPDModel extends LDrawModel {
+	/**
+	 * @uml.property name="modelName"
+	 */
+	String modelName;
+
+	// ---------- model
+	// ---------------------------------------------------[static]--
+	//
+	// Purpose: Creates a new model ready to be edited.
+	//
+	// ------------------------------------------------------------------------------
+	public static LDrawMPDModel model() {
+		LDrawMPDModel newModel = new LDrawMPDModel();
+		String name = null;
+
+		// Set the spec-compliant model name with extension
+		name = "UntitledModel";
+		newModel.setModelDisplayName(name);
+
+		return newModel;
+
+	}// end model
+
+	// ========== init
+	// ==============================================================
+	//
+	// Purpose: Creates a blank submodel.
+	//
+	// ==============================================================================
+	public LDrawMPDModel init() {
+		super.init();
+
+		modelName = "";
+		return this;
+	}// end init
+
+	// ========== initWithLines:inRange:parentGroup:
+	// ================================
+	//
+	// Purpose: Creates a new model file based on the lines from a file.
+	// These lines of strings should only describe one model, not
+	// multiple ones.
+	//
+	// The first line does not need to be an MPD file delimiter. If
+	// you pass in a non-mpd submodel, this method simply wraps it in
+	// an MPD submodel object.
+	//
+	// ==============================================================================
+	public LDrawMPDModel initWithLines(ArrayList<String> lines, Range range,
+			DispatchGroup parentGroup) {
+		String mpdFileCommand = lines.get(range.getLocation());
+		String lastLine = null;
+		CharBuffer mpdSubModelNameBuffer = Buffers.newDirectCharBuffer(256);
+		String mpdSubmodelName = "";
+		boolean isMPDModel = false;
+		boolean hasSubmodelEnd = false;
+		Range nonMPDRange = range;
+
+		// The first line should be 0 FILE modelName
+		isMPDModel = lineIsMPDModelStart(mpdFileCommand, mpdSubModelNameBuffer);
+		char[] tempChars = new char[mpdSubModelNameBuffer.position()];
+		mpdSubModelNameBuffer.position(0);
+		mpdSubModelNameBuffer.get(tempChars);
+		mpdSubmodelName = new String(tempChars);
+
+		// Strip out the MPD commands for model parsing, and read in the model
+		// name.
+		if (isMPDModel == true) {
+			// Strip out the first line and the NOFILE command, if there is
+			// one.
+			lastLine = lines.get(range.getMaxRange());
+
+			hasSubmodelEnd = lineIsMPDModelEnd(lastLine);
+			if (hasSubmodelEnd) {
+				// strip out 0 FILE and 0 NOFILE
+				nonMPDRange = new Range(range.getLocation() + 1,
+						range.length() - 2);
+			} else {
+				// strip out 0 FILE only
+				nonMPDRange = new Range(range.getLocation() + 1,
+						range.length() - 1);
+			}
+		} else {
+			nonMPDRange = range;
+		}
+
+		// Create a basic model.
+		super.initWithLines(lines, nonMPDRange, parentGroup);
+		// parses model into header and steps.
+
+		// If it wasn't MPD, we still need a model name. We can get that via the
+		// parsed model.
+		if (isMPDModel == false) {
+			mpdSubmodelName = modelDescription();
+		}
+
+		// And now set the MPD-specific attributes.
+		setModelName(mpdSubmodelName);
+
+		return this;
+
+	}// end initWithLines:inRange:
+
+	// ---------- rangeOfDirectiveBeginningAtIndex:inLines:maxIndex:
+	// ------[static]--
+	//
+	// Purpose: Returns the range from the beginning to the end of the model.
+	//
+	// ------------------------------------------------------------------------------
+	public static Range rangeOfDirectiveBeginningAtIndex(int index,
+			ArrayList<String> lines, int maxIndex) {
+		String firstLine = null;
+		boolean isMPDModel = false;
+		String currentLine = null;
+		Range testRange = new Range(index, maxIndex - index + 1);
+		Range modelRange = testRange;
+		int counter = 0;
+		int modelEndIndex = 0;
+
+		if (testRange.length() > 1) {
+			// See if we have to look for MPD syntax.
+			firstLine = lines.get(testRange.getLocation());
+			isMPDModel = lineIsMPDModelStart(firstLine, null);
+
+			// Find the end of the MPD model. MPD models can end with 0
+			// NOFILE, or
+			// they can just stop where the next model starts.
+			if (isMPDModel == true) {
+				// Assume the model extends for the rest of the file unless
+				// proven
+				// otherwise.
+				modelEndIndex = testRange.getMaxRange();
+
+				for (counter = testRange.getLocation() + 1; counter <= testRange
+						.getMaxRange(); counter++) {
+					currentLine = lines.get(counter);
+
+//					if (lineIsMPDModelEnd(currentLine)) {
+//						modelEndIndex = counter + 1;
+//						break;
+//					} else 
+					if (lineIsMPDModelStart(currentLine, null)) {
+						modelEndIndex = counter - 1;
+						break;
+					}
+				}
+				modelRange = new Range(testRange.getLocation(), modelEndIndex
+						- testRange.getLocation() + 1);
+			} else {
+				// Non-MPD models just go to the end of the file.
+				modelRange = testRange;
+			}
+		}
+
+		return modelRange;
+
+	}// end rangeOfDirectiveBeginningAtIndex:inLines:maxIndex:
+
+	// #pragma mark -
+	// #pragma mark DIRECTIVES
+	// #pragma mark -
+	//
+	// ========== write
+	// =============================================================
+	//
+	// Purpose: Writes out the MPD submodel, wrapped in the MPD file
+	// commands.
+	//
+	// ==============================================================================
+	public String write() {
+		String CRLF = "\r\n";// we need a DOS line-end marker,
+		// because
+		// LDraw is predominantly DOS-based.
+
+		String written = new String();
+
+		// Write it out as:
+		// 0 FILE model_name
+		// ....
+		// model text
+		// ....
+		// 0 falseFILE
+		written = written.concat(String.format("0 %s %s%s",
+				LDrawKeywords.LDRAW_MPD_SUBMODEL_START, modelName(), CRLF));
+		written = written.concat(String.format("%s%s", super.write(), CRLF));
+		written = written.concat(String.format("0 %s",
+				LDrawKeywords.LDRAW_MPD_SUBMODEL_END));
+
+		return written;
+
+	}// end write
+
+	// ========== writeModel
+	// =============================================================
+	//
+	// Purpose: Writes out the submodel, without the MPD file commands.
+	//
+	// ==============================================================================
+	public String writeModel() {
+		return super.write();
+
+	}// end writeModel
+
+	//
+	// #pragma mark -
+	// #pragma mark DISPLAY
+	// #pragma mark -
+
+	// ========== browsingDescription
+	// ===============================================
+	//
+	// Purpose: Returns a representation of the directive as a short string
+	// which can be presented to the user.
+	//
+	// ==============================================================================
+	public String browsingDescription() {
+		return modelDisplayName();
+
+	}// end browsingDescription
+
+	// ========== inspectorClassName
+	// ================================================
+	//
+	// Purpose: Returns the name of the class used to inspect this one.
+	//
+	// ==============================================================================
+	public String inspectorClassName() {
+		return "InspectionMPDModel";
+
+	}// end inspectorClassName
+
+	public void setEnclosingDirective(LDrawContainer newParent) {
+		super.setEnclosingDirective(newParent);
+		sendMessageToObservers(MessageT.MessageScopeChanged);
+	}
+
+	// #pragma mark -
+	// #pragma mark ACCESSORS
+	// #pragma mark -
+
+	// ========== browsingDescription
+	// ===============================================
+	//
+	// Purpose: Returns a representation of the directive as a short string
+	// which can be presented to the user.
+	//
+	// ==============================================================================
+	public String modelDisplayName() {
+		// Chop off that hideous un-Maclike .ldr extension that the LDraw File
+		// Specification forces us to add.
+		File f = new File(modelName);
+		String filename = f.getName();
+		if (filename.contains(".")) {
+			return  filename.substring(0, filename.indexOf("."));			
+		} else
+			return modelName;
+	}// end modelDisplayName
+
+	// ========== modelName
+	// =========================================================
+	//
+	// Purpose: Retuns the name for this MPD file. The MPD name functions as
+	// the part name to describe the entire submodel.
+	//
+	// ==============================================================================
+	public String modelName() {
+		return modelName;
+
+	}// end modelName
+
+	// ========== setModelName:
+	// =====================================================
+	//
+	// Purpose: Updates the name for this MPD file. The MPD name functions as
+	// the part name to describe the entire submodel.
+	//
+	// ==============================================================================
+	/**
+	 * @param newModelName
+	 * @uml.property name="modelName"
+	 */
+	public void setModelName(String newModelName) {
+		modelName = newModelName;
+
+		sendMessageToObservers(MessageT.MessageNameChanged);
+
+	}// end setModelName:
+
+	// ========== setModelDisplayName:
+	// ==============================================
+	//
+	// Purpose: Unfortunately, we can't accept any old input for model names.
+	// This method accepts a user-entered string with arbitrary
+	// characters, and sets the model name to the closest
+	// representation thereof which is still LDraw-compliant.
+	//
+	// After calling this method, -browsingDescription will return a
+	// value as close to newDisplayName as possible.
+	//
+	// ==============================================================================
+	public void setModelDisplayName(String newDisplayName) {
+		String acceptableName = LDrawMPDModel
+				.ldrawCompliantNameForName(newDisplayName);
+		;
+
+		setModelName(acceptableName);
+		;
+
+	}// end setModelDisplayName:
+
+	// #pragma mark -
+	// #pragma mark UTILITIES
+	// #pragma mark -
+
+	// ---------- ldrawCompliantNameForName:
+	// ------------------------------[static]--
+	//
+	// Purpose: Unfortunately, we can't accept any old input for model names.
+	// This method accepts a user-entered string with arbitrary
+	// characters, and returns the model name or the closest
+	// representation thereof which is still LDraw-compliant.
+	//
+	// ------------------------------------------------------------------------------
+	public static String ldrawCompliantNameForName(String newDisplayName) {
+		String acceptableName = null;
+
+		// Since LDraw is space-delimited, we can't have whitespace at the
+		// beginning
+		// of the name. We'll chop of ending whitespace for good measure.
+		acceptableName = newDisplayName.trim();
+
+		// The LDraw spec demands that the model name end with a valid LDraw
+		// extension. Yuck!
+		if (LDrawUtilities.isLDrawFilenameValid(acceptableName) == false) {
+			// acceptableName = acceptableName
+			// stringByAppendingPathExtension:"ldr"();
+			acceptableName = acceptableName.concat(".ldr");
+		}
+
+		return acceptableName;
+
+	}// end ldrawCompliantNameForName:
+
+	// ========== lineIsMPDModelStart:modelName:
+	// ====================================
+	//
+	// Purpose: Returns if the line is a 0 FILE submodelName line.
+	//
+	// If it is, optionally returns the submodelName
+	//
+	// Note: Any line can have leading whitespace, which is why this is not
+	// as simple as line hasPrefix:"0 FILE"]
+	//
+	// ==============================================================================
+	public static boolean lineIsMPDModelStart(String line,
+			CharBuffer modelNamePtr) {
+		String parsedField = null;
+		boolean isMPDModel = false;
+		StringTokenizer strTokenizer = new StringTokenizer(line);
+		if (strTokenizer.hasMoreTokens() == false)
+			return false;
+		parsedField = strTokenizer.nextToken();
+
+		if (parsedField.equals("0")) {
+			if (strTokenizer.hasMoreTokens() == false)
+				return false;
+			parsedField = strTokenizer.nextToken();
+
+			if (parsedField.equals(LDrawKeywords.LDRAW_MPD_SUBMODEL_START))
+				isMPDModel = true;
+		}
+
+		// Strip out the MPD commands for model parsing, and read in the model
+		// name.
+		if (isMPDModel == true && modelNamePtr != null) {
+			// Extract MPD-specific data: the submodel name.
+			// Leading and trailing whitespace is ignored, in keeping with the
+			// rules
+			// for parsing file references (type 1 lines)
+			if (strTokenizer.hasMoreTokens() == false)
+				return false;
+			modelNamePtr.append(strTokenizer.nextToken());
+			while (strTokenizer.hasMoreTokens()) {
+				modelNamePtr.append(" "+strTokenizer.nextToken());				
+			}
+		}
+
+		return isMPDModel;
+	}
+
+	// ========== lineIsMPDModelEnd:
+	// ================================================
+	//
+	// Purpose: Returns if the line is a 0 falseFILE line.
+	//
+	// ==============================================================================
+	public static boolean lineIsMPDModelEnd(String line) {
+		String parsedField = null;
+		boolean isMPDModelEnd = false;
+		StringTokenizer strTokenizer = new StringTokenizer(line);
+
+		if (strTokenizer.hasMoreTokens() == false)
+			return false;
+		parsedField = strTokenizer.nextToken();
+
+		if (parsedField.equals("0")) {
+			if (strTokenizer.hasMoreTokens() == false)
+				return false;
+			parsedField = strTokenizer.nextToken();
+
+			if (parsedField.equals(LDrawKeywords.LDRAW_MPD_SUBMODEL_END))
+				isMPDModelEnd = true;
+		}
+
+		return isMPDModelEnd;
+	}
+
+	// ========== registerUndoActions
+	// ===============================================
+	//
+	// Purpose: Registers the undo actions that are unique to this subclass,
+	// not to any superclass.
+	//
+	// ==============================================================================
+	public void registerUndoActions(UndoManager undoManager) {
+		LDrawFile enclosingFile = enclosingFile();
+		String oldName = modelName();
+
+		super.registerUndoActions(undoManager);
+
+		// Changing the name of the model in an undo-aware way is pretty
+		// bothersome,
+		// because we have to track down any references to the model and change
+		// their names too. That operation is the responsibility of the
+		// LDrawFile,
+		// not us.
+		if (enclosingFile != null) {
+			// todo
+			// undoManager.prepareWithInvocationTarget(enclosingFile, this,
+			// oldName);
+		}
+		// else
+		// undoManager.prepareWithInvocationTarget(setModelName(oldName));
+
+	}// end registerUndoActions:
+
+	// #pragma mark -
+	// #pragma mark DESTRUCTOR
+	// #pragma mark -
+}

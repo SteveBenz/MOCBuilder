@@ -1,0 +1,835 @@
+package Window;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.BusyIndicator;
+import org.eclipse.swt.custom.CCombo;
+import org.eclipse.swt.custom.SashForm;
+import org.eclipse.swt.dnd.DND;
+import org.eclipse.swt.dnd.DragSource;
+import org.eclipse.swt.dnd.DragSourceEvent;
+import org.eclipse.swt.dnd.DragSourceListener;
+import org.eclipse.swt.dnd.DropTarget;
+import org.eclipse.swt.dnd.DropTargetEvent;
+import org.eclipse.swt.dnd.DropTargetListener;
+import org.eclipse.swt.dnd.TextTransfer;
+import org.eclipse.swt.dnd.Transfer;
+import org.eclipse.swt.events.MenuDetectEvent;
+import org.eclipse.swt.events.MenuDetectListener;
+import org.eclipse.swt.events.MouseEvent;
+import org.eclipse.swt.events.MouseListener;
+import org.eclipse.swt.events.MouseTrackListener;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.events.SelectionListener;
+import org.eclipse.swt.events.TreeEvent;
+import org.eclipse.swt.events.TreeListener;
+import org.eclipse.swt.graphics.Cursor;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Decorations;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Listener;
+import org.eclipse.swt.widgets.Menu;
+import org.eclipse.swt.widgets.MenuItem;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Text;
+import org.eclipse.swt.widgets.ToolTip;
+import org.eclipse.swt.widgets.Tree;
+import org.eclipse.swt.widgets.TreeItem;
+
+import Builder.BrickSelectionManager;
+import Command.LDrawColor;
+import Command.LDrawColorT;
+import Command.LDrawPart;
+import Common.Vector3f;
+import ConnectivityEditor.Window.ConnectivityEditorUI;
+import Exports.PartDomainT;
+import LDraw.Files.LDrawMPDModel;
+import LDraw.Files.LDrawStep;
+import LDraw.Support.ColorLibrary;
+import LDraw.Support.ConnectivityLibrary;
+import LDraw.Support.LDrawDirective;
+import LDraw.Support.LDrawUtilities;
+import LDraw.Support.PartCache;
+import LDraw.Support.type.LDrawGridTypeT;
+import Resource.ResourceManager;
+import UndoRedo.ChangeDirectivesIndexAction;
+import UndoRedo.ChangeDirectivesParentStepAction;
+import UndoRedo.ChangeStepIndexAction;
+import UndoRedo.DirectiveAction;
+import UndoRedo.LDrawUndoRedoManager;
+
+public class PartBrowserUI implements DragSourceListener {
+	BrickViewer preview;
+	Label label_Preview;
+	Tree tree;
+	ToolTip tooltip;
+	PartCache cache;
+	Button colorButton;
+	String lastSearch;
+	PartDomainT lastSearchDomain;
+	Image folderImage;
+	Display display;
+	Shell shell;
+	Composite parent;
+	Composite previewGroup;
+
+	private HashMap<String, ArrayList<String>> partListMap;
+
+	public PartBrowserUI(Composite parent, int style) {
+		display = parent.getDisplay();
+		shell = parent.getShell();
+		tooltip = new ToolTip(shell, SWT.NONE);
+		tooltip.setAutoHide(true);
+		partListMap = new HashMap<String, ArrayList<String>>();
+
+		generateMainView(parent);
+		initData();
+	}
+
+	private void updatePartList(String searchText, PartDomainT searchDomain) {
+		partListMap.clear();
+		ArrayList<String> categories = cache.getCategories();
+		ArrayList<String> list;
+
+		for (String categoryName : categories) {
+			list = cache.getPartLists(categoryName, searchText, searchDomain);
+			partListMap.put(categoryName, list);
+		}
+	}
+
+	private void updatePartList() {
+		partListMap.clear();
+		ArrayList<String> categories = cache.getCategories();
+		ArrayList<String> list;
+
+		for (String categoryName : categories) {
+			list = cache.getPartLists(categoryName, lastSearch,
+					lastSearchDomain);
+			partListMap.put(categoryName, list);
+		}
+	}
+
+	public void close() {
+	}
+
+	private void initData() {
+		BusyIndicator.showWhile(display, new Runnable() {
+			public void run() {
+				cache = PartCache.getInstance();
+				folderImage = ResourceManager.getInstance().getImage(display,
+						"/Resource/Image/folder_brick.png");
+				if (!display.isDisposed()) {
+					display.asyncExec(new Runnable() {
+
+						@Override
+						public void run() {
+							if (!tree.isDisposed()) {
+								shell.setCursor(null);
+								updatePartList(null, null);
+								updateListView();
+							}
+						}
+					});
+				}
+			}
+		});
+	}
+
+	private void generateMainView(Composite composite) {
+		parent = composite;
+		SashForm sashForm = new SashForm(composite, SWT.NONE);
+		sashForm.setOrientation(SWT.VERTICAL);
+
+		Composite treeGroup = new Composite(sashForm, SWT.BORDER);
+		treeGroup.setLayout(new GridLayout());
+
+		Composite searchGroup = new Composite(treeGroup, SWT.NONE);
+		GridData data = new GridData(SWT.FILL, SWT.BEGINNING, true, false);
+		searchGroup.setLayoutData(data);
+		searchGroup.setLayout(new GridLayout(3, false));
+
+		final CCombo combo_searchDomain = new CCombo(searchGroup, SWT.NONE);
+		combo_searchDomain.add("All");
+		combo_searchDomain.add("LDraw");
+		combo_searchDomain.add("Bricklink");
+		combo_searchDomain.select(0);
+		combo_searchDomain.setEditable(false);
+
+		final Text text = new Text(searchGroup, SWT.NONE);
+		text.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false));
+		final Listener searchListener = new Listener() {
+			@Override
+			public void handleEvent(Event event) {
+				PartDomainT searchDomain = null;
+				try {
+					if (combo_searchDomain.getText().toLowerCase()
+							.equals("ldraw"))
+						searchDomain = PartDomainT.LDRAW;
+					if (combo_searchDomain.getText().toLowerCase()
+							.equals("bricklink"))
+						searchDomain = PartDomainT.BRICKLINK;
+				} catch (Exception e) {
+				}
+				search(tree.getItems(), text.getText().toLowerCase(),
+						searchDomain);
+			}
+		};
+
+		text.addListener(SWT.KeyUp, searchListener);
+		combo_searchDomain.addListener(SWT.Selection, searchListener);
+
+		tree = new Tree(treeGroup, SWT.NONE);
+		data = new GridData(SWT.FILL, SWT.FILL, true, true);
+		tree.setLayoutData(data);
+
+		tree.addMenuDetectListener(new MenuDetectListener() {
+
+			@Override
+			public void menuDetected(MenuDetectEvent arg0) {
+				// TODO Auto-generated method stub
+				TreeItem[] selectedItem = tree.getSelection();
+
+				tree.setMenu(null);
+				if (selectedItem.length == 1) {
+					String filename = (String) selectedItem[0].getData();
+					if (filename != null) {
+						tree.setMenu(createPopupMenu_Brick(parent.getShell(),
+								filename));
+					} else
+						tree.setMenu(createPopupMenu_Category(
+								parent.getShell(), selectedItem[0].getText()));
+				} else {
+					tree.setMenu(createPopupMenu_Category(parent.getShell(),
+							null));
+				}
+			}
+
+		});
+		tree.addSelectionListener(new SelectionListener() {
+			@Override
+			public void widgetSelected(SelectionEvent event) {
+				TreeItem[] selectedItem = tree.getSelection();
+				if (selectedItem.length > 0) {
+					String displayPartName = null;
+					TreeItem parentItem = null;
+					int index;
+					if (selectedItem[0].getData() == null) {
+						parentItem = selectedItem[0];
+						index = 0;
+					} else {
+						parentItem = selectedItem[0].getParentItem();
+						index = parentItem.indexOf(selectedItem[0]);
+					}
+
+					Object data;
+					TreeItem[] items = parentItem.getItems();
+
+					for (int i = index; i < parentItem.getItemCount(); i++) {
+						data = items[i].getData();
+						if (data != null) {
+							displayPartName = data.toString();
+							break;
+
+						}
+					}
+					updatePreview(displayPartName);
+				}
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent event) {
+			}
+		});
+		tree.addMouseListener(new MouseListener() {
+
+			@Override
+			public void mouseUp(MouseEvent event) {
+			}
+
+			@Override
+			public void mouseDown(MouseEvent event) {
+			}
+
+			@Override
+			public void mouseDoubleClick(MouseEvent event) {
+
+				TreeItem[] selectedItem = tree.getSelection();
+				if (selectedItem.length > 0) {
+					Object partName = selectedItem[0].getData();
+					if (partName != null) {
+						addBrick(partName.toString());
+					}
+				}
+			}
+		});
+		tree.addMouseTrackListener(new MouseTrackListener() {
+
+			@Override
+			public void mouseHover(MouseEvent e) {
+				Point point = new Point(e.x, e.y);
+				TreeItem item = tree.getItem(point);
+				if (item != null) {
+					Object data = item.getData();
+					if (data != null) {
+						tree.setToolTipText(data.toString());
+						return;
+					}
+				}
+				tree.setToolTipText("");
+			}
+
+			@Override
+			public void mouseExit(MouseEvent e) {
+			}
+
+			@Override
+			public void mouseEnter(MouseEvent e) {
+			}
+		});
+		tree.addTreeListener(new TreeListener() {
+
+			Image connectivityImage = ResourceManager.getInstance().getImage(
+					display, "/Resource/Image/chain.png");
+			Image noConnectivityImage = ResourceManager.getInstance().getImage(
+					display, "/Resource/Image/chain_exclamation.png");
+
+			@Override
+			public void treeExpanded(final TreeEvent e) {
+				Thread thread = new Thread() {
+
+					@Override
+					public void run() {
+						if (!display.isDisposed()) {
+							display.asyncExec(new Runnable() {
+
+								@Override
+								public void run() {
+									if (!tree.isDisposed()) {
+										ConnectivityLibrary library = ConnectivityLibrary
+												.getInstance();
+										TreeItem item = (TreeItem) e.item;
+										String fileName;
+										for (TreeItem subItem : item.getItems()) {
+											fileName = (String) subItem
+													.getData();
+											if (fileName == null
+													|| subItem.getImage() != null) {
+												continue;
+											} else if (library
+													.hasConnectivity(fileName)) {
+												subItem.setImage(connectivityImage);
+											} else {
+												subItem.setImage(noConnectivityImage);
+											}
+										}
+									}
+
+								}
+							});
+						}
+						super.run();
+					}
+				};
+				thread.start();
+			}
+
+			@Override
+			public void treeCollapsed(TreeEvent e) {
+			}
+		});
+
+		setDragAndDrop();
+
+		DragSource source = new DragSource(tree, DND.DROP_COPY | DND.DROP_MOVE);
+		source.setTransfer(new Transfer[] { TextTransfer.getInstance() });
+		source.addDragListener(this);
+
+		Composite preview = new Composite(sashForm, SWT.BORDER);
+		generatePreview(preview);
+
+		sashForm.setWeights(new int[] { 2, 1 });
+	}
+
+	private String getFirstPartName() {
+		TreeItem[] treeItems = tree.getItems();
+		String displayPartName = null;
+		if (treeItems.length > 0) {
+
+			TreeItem parentItem = null;
+			int index;
+			if (treeItems[0].getData() == null) {
+				parentItem = treeItems[0];
+				index = 0;
+			} else {
+				parentItem = treeItems[0].getParentItem();
+				index = parentItem.indexOf(treeItems[0]);
+			}
+
+			Object data;
+			TreeItem[] items = parentItem.getItems();
+
+			for (int i = index; i < parentItem.getItemCount(); i++) {
+				data = items[i].getData();
+				if (data != null) {
+					displayPartName = data.toString();
+					break;
+
+				}
+			}
+		}
+		return displayPartName;
+	}
+
+	private Menu createPopupMenu_Brick(Decorations parent, final String filename) {
+		Menu menu = new Menu(parent, SWT.POP_UP);
+
+		final MenuItem modifyConnectivityItem = new MenuItem(menu, SWT.PUSH);
+		modifyConnectivityItem.setText("Modify Connectivity");
+		modifyConnectivityItem.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				ConnectivityEditorUI.getInstance(filename);
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+			}
+		});
+
+		return menu;
+	}
+
+	private Menu createPopupMenu_Category(Decorations parent,
+			final String categoryName) {
+		Menu menu = new Menu(parent, SWT.POP_UP);
+
+		MenuItem modifyConnectivityItem = new MenuItem(menu, SWT.PUSH);
+		modifyConnectivityItem.setText("New Category");
+		modifyConnectivityItem.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				// open new dialog for input new category name
+				CategoryNameInputDialog dlg = new CategoryNameInputDialog(
+						shell, SWT.DIALOG_TRIM);
+				String categoryName = (String) dlg.open();
+				if (categoryName != null) {
+					cache.getCategories().add(categoryName);
+					cache.writeCategoryToFile();
+					cache.reload();
+					updatePartList();
+					updateListView();
+				}
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+			}
+		});
+
+		modifyConnectivityItem = new MenuItem(menu, SWT.PUSH);
+		modifyConnectivityItem.setText("Delete");
+		modifyConnectivityItem.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				if (categoryName != null) {
+					cache.getCategories().remove(categoryName);
+					cache.writeCategoryToFile();
+					updateListView();
+				}
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+			}
+		});
+		if (categoryName == null)
+			modifyConnectivityItem.setEnabled(false);
+
+		return menu;
+	}
+
+	private void generatePreview(Composite parent) {
+		parent.setLayout(new GridLayout(1, false));
+		parent.setLayoutData(new GridData(GridData.FILL, GridData.FILL, true,
+				true));
+
+		previewGroup = new Composite(parent, SWT.NONE);
+		GridData data = new GridData(SWT.FILL, SWT.FILL, true, true);
+		previewGroup.setLayoutData(data);
+		previewGroup.setLayout(new GridLayout(10, true));
+
+		DragSource source = new DragSource(previewGroup, DND.DROP_COPY
+				| DND.DROP_MOVE);
+		source.setTransfer(new Transfer[] { TextTransfer.getInstance() });
+		source.addDragListener(this);
+
+		label_Preview = new Label(previewGroup, SWT.NULL);
+		data = new GridData(SWT.LEFT, SWT.TOP, false, false);
+		data.horizontalSpan = 8;
+		data.horizontalAlignment = GridData.FILL;
+		label_Preview.setLayoutData(data);
+		label_Preview.setText("");
+
+		colorButton = new Button(previewGroup, SWT.FLAT);
+		data = new GridData(SWT.CENTER, SWT.CENTER, true, false);
+		data.horizontalSpan = 2;
+		colorButton.setLayoutData(data);
+		final ColorPicker colorPicker = new ColorPicker(colorButton,
+				"Set Preview Color");
+		colorPicker.addSelectionListener(new SelectionListener() {
+			@Override
+			public void widgetSelected(SelectionEvent event) {
+				Button selectedButton = (Button) event.widget;
+				LDrawColorT colorT = (LDrawColorT) selectedButton.getData();
+				colorPicker.setColor(colorT);
+				tree.notifyListeners(SWT.Selection, null);
+				selectedButton.getShell().setVisible(false);
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent event) {
+
+			}
+		});
+		colorButton.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent event) {
+				colorPicker.showDialog();
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent event) {
+			}
+		});
+
+		preview = new BrickViewer(previewGroup, tooltip);
+		data = new GridData(GridData.FILL, GridData.FILL, true, true);
+		data.horizontalSpan = 10;
+		preview.setLayoutData(data);
+
+	}
+
+	private boolean search(TreeItem[] parent, String searchText,
+			PartDomainT searchDomain) {
+		if (!searchText.equals(lastSearch) || searchDomain != lastSearchDomain) {
+			long nano = System.nanoTime();
+			updatePartList(searchText, searchDomain);
+			updateListView();
+			lastSearch = searchText;
+			lastSearchDomain = searchDomain;
+			// tree.setRedraw(true);
+			System.out.println("Search: " + searchText + "in "
+					+ (System.nanoTime() - nano) + " nano seconds");
+
+			updatePreview(getFirstPartName());
+
+		}
+		return true;
+	}
+
+	public boolean contains(String key) {
+		return cache.contains(key);
+	}
+
+	private void updateListView() {
+		tree.setVisible(false);
+		tree.setRedraw(false);
+		tree.removeAll();
+
+		ArrayList<String> categories = cache.getCategories();
+		TreeItem items[] = tree.getItems();
+		ArrayList<String> list;
+		items = new TreeItem[categories.size() + 1];
+		for (int i = 0; i < categories.size(); i++) {
+			list = partListMap.get(categories.get(i));
+			if (list == null)
+				continue;
+
+			if (lastSearch != null && lastSearch.equals("") == false
+					&& list.size() == 0)
+				continue;
+
+			items[i] = new TreeItem(tree, SWT.NONE);
+			items[i].setText(categories.get(i));
+			items[i].setImage(folderImage);
+			updateTreeItem(items[i], list);
+		}
+
+		tree.setRedraw(true);
+		tree.setVisible(true);
+	}
+
+	private void updateTreeItem(TreeItem parent, ArrayList<String> lists) {
+		final HashMap<String, ArrayList<String>> subCategoryMap = new HashMap<String, ArrayList<String>>();
+		final HashMap<String, Boolean> basisCheckMap = new HashMap<String, Boolean>();
+		String basisPartName;
+		for (String fileName : lists) {
+			basisPartName = LDrawUtilities.excludePattern(fileName);
+			if (fileName.equals(basisPartName)) {
+				subCategoryMap.put(basisPartName, new ArrayList<String>());
+				basisCheckMap.put(basisPartName, true);
+			} else if (subCategoryMap.containsKey(basisPartName) == false) {
+				subCategoryMap.put(basisPartName, new ArrayList<String>());
+
+			}
+			subCategoryMap.get(basisPartName).add(fileName);
+		}
+
+		for (String basisString : subCategoryMap.keySet()) {
+			Collections.sort(subCategoryMap.get(basisString),
+					new Comparator<String>() {
+						@Override
+						public int compare(String arg0, String arg1) {
+							String partDesc0;
+							String partDesc1;
+
+							partDesc0 = cache.getPartName(arg0);
+
+							partDesc1 = cache.getPartName(arg1);
+
+							return partDesc0.compareTo(partDesc1);
+						}
+					});
+		}
+
+		String categoryName;
+		String partDescription;
+		TreeItem item;
+		parent.removeAll();
+
+		ArrayList<String> categoryList = new ArrayList<String>(
+				subCategoryMap.keySet());
+		Collections.sort(categoryList, new Comparator<String>() {
+			@Override
+			public int compare(String arg0, String arg1) {
+				String partDesc0;
+				String partDesc1;
+
+				if (basisCheckMap.containsKey(arg0) && basisCheckMap.get(arg0)) {
+					partDesc0 = cache.getPartName(arg0);
+				} else {
+					partDesc0 = cache.getPartName(subCategoryMap.get(arg0).get(
+							0));
+				}
+
+				if (basisCheckMap.containsKey(arg1) && basisCheckMap.get(arg1)) {
+					partDesc1 = cache.getPartName(arg1);
+				} else {
+					partDesc1 = cache.getPartName(subCategoryMap.get(arg1).get(
+							0));
+				}
+
+				return partDesc0.compareTo(partDesc1);
+			}
+		});
+
+		for (String basisString : categoryList) {
+			ArrayList<String> subList = subCategoryMap.get(basisString);
+			if (basisCheckMap.containsKey(basisString)
+					&& basisCheckMap.get(basisString)) {
+				basisPartName = basisString;
+			} else {
+				basisPartName = subList.get(0);
+			}
+			categoryName = cache.getPartName(basisPartName);
+			item = new TreeItem(parent, SWT.NONE);
+			item.setText(categoryName);
+			item.setData(basisPartName);
+
+			if (subList.size() > 1)
+				for (String partName : subList) {
+					partDescription = cache.getPartName(partName);
+					TreeItem item2 = new TreeItem(item, SWT.NONE);
+					item2.setText(partDescription);
+					item2.setData(partName);
+
+				}
+		}
+	}
+
+	private void addBrick(String partName) {
+		LDrawPart part = new LDrawPart();
+		part.initWithPartName(partName, new Vector3f(0, 0, 0));
+		part.resolvePart();
+		part.moveTo(
+				new Vector3f(0, -part.boundingBox3().getMax()
+						.sub(part.boundingBox3().getMin()).y, 0),
+				LDrawGridTypeT.Coarse);
+		MOCBuilder.getInstance().addDirectiveToWorkingFile(part);
+		DirectiveAction action = new DirectiveAction();
+		action.addDirective(part);
+		LDrawUndoRedoManager.getInstance().pushUndoAction(action);
+		GlobalFocusManager.getInstance().forceFocusToMainView();
+	}
+
+	private void updatePreview(final String partName) {
+		final LDrawColor color = ColorLibrary.sharedColorLibrary()
+				.colorForCode((LDrawColorT) colorButton.getData());
+
+		Cursor waitCursor = display.getSystemCursor(SWT.CURSOR_WAIT);
+		shell.setCursor(waitCursor);
+		Thread thread = new Thread() {
+			@Override
+			public void run() {
+				if (partName == null) {
+					preview.setDirectiveToWorkingFile(null);
+				} else {
+					preview.setDirectiveToWorkingFile(partName, color);
+
+				}
+				display.asyncExec(new Runnable() {
+
+					@Override
+					public void run() {
+						if (partName == null)
+							label_Preview.setText("");
+						else
+							label_Preview.setText(partName + ": "
+									+ cache.getPartName(partName));
+						// label_Preview.pack();
+						if (!shell.isDisposed()) {
+							shell.setCursor(null);
+						}
+					}
+				});
+			}
+		};
+		thread.start();
+	}
+
+	@Override
+	public void dragStart(DragSourceEvent event) {
+		LDrawColor color = ColorLibrary.sharedColorLibrary().colorForCode(
+				(LDrawColorT) colorButton.getData());
+		DNDTransfer.getInstance().setColor(color);
+		event.image = null;
+
+		Object object = null;
+		Control control = ((DragSource) event.getSource()).getControl();
+		if (control.equals(previewGroup)) {
+			return;
+		} else if (control.equals(tree)) {
+			object = tree.getSelection()[0].getData();
+		}
+		if (object == null) {
+			event.doit = true;
+			event.data = "Category";
+			DNDTransfer.getInstance().setData("Category");
+		} else {
+			DNDTransfer.getInstance().setData(object);
+		}
+	}
+
+	@Override
+	public void dragSetData(DragSourceEvent event) {
+		if (TextTransfer.getInstance().isSupportedType(event.dataType)) {
+			event.data = DNDTransfer.getInstance().getData();
+		}
+	}
+
+	@Override
+	public void dragFinished(DragSourceEvent event) {
+		DNDTransfer.getInstance().end();
+	}
+
+	void setDragAndDrop() {
+		Transfer[] types = new Transfer[] { TextTransfer.getInstance() };
+		int operations = DND.DROP_MOVE;
+		DropTarget target = new DropTarget(tree, operations);
+		target.setTransfer(types);
+		target.addDropListener(new DropTargetListener() {
+			@Override
+			public void dropAccept(DropTargetEvent event) {
+			}
+
+			@Override
+			public void drop(DropTargetEvent event) {
+				if (event.data == null || tree.getSelectionCount() == 0) {
+					event.detail = DND.DROP_NONE;
+					return;
+				}
+
+				TreeItem[] selectedItems = tree.getSelection();
+				TreeItem targetItem = null;
+
+				if (event.item != null) {
+					if (event.item.equals(selectedItems[0])) {
+						event.detail = DND.DROP_NONE;
+						return;
+					}
+					if (event.item.getData() == null) {
+						targetItem = (TreeItem) event.item;
+					} else {
+					}
+				}
+
+				if (selectedItems[0].getData() == null) { // src is category
+					ArrayList<String> categoryList = cache.getCategories();
+					int targetIndex = -1;
+					String srcItem = null;
+					srcItem = categoryList.get(tree.indexOf(selectedItems[0]));
+					if (srcItem != null)
+						categoryList.remove(srcItem);
+
+					if (targetItem == null) {
+						targetIndex = categoryList.size() - 1;
+					} else
+						for (int i = 0; i < categoryList.size(); i++) {
+							if (categoryList.get(i)
+									.equals(targetItem.getText())) {
+								targetIndex = i;
+								break;
+							}
+						}
+
+					if (targetIndex != -1) {
+						categoryList.add(targetIndex + 1, srcItem);
+					}
+
+					updateListView();
+					cache.writeCategoryToFile();
+				}
+			}
+
+			@Override
+			public void dragOver(DropTargetEvent event) {
+				if (DNDTransfer.getInstance().getData().equals("Category")) {
+					event.feedback = DND.FEEDBACK_INSERT_AFTER;
+				} else {
+					event.feedback = DND.FEEDBACK_NONE;
+				}
+			}
+
+			@Override
+			public void dragOperationChanged(DropTargetEvent event) {
+
+			}
+
+			@Override
+			public void dragLeave(DropTargetEvent event) {
+
+			}
+
+			@Override
+			public void dragEnter(DropTargetEvent event) {
+
+			}
+		});
+	}
+}

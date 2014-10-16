@@ -1,0 +1,46 @@
+Cancel Selection:Esc
+Save:Ctrl+S
+Copy:Ctrl+C
+Cut:Ctrl+X
+Paste:Ctrl+V
+Undo:Ctrl+Z
+Redo:Ctrl+Y
+Delete:Del
+Move Camera Pos:Space
+Rotate X 90' C:Arrow_UP
+Rotate X 90' CC:Arrow_Down
+Rotate Y 90' C:Arrow_Left
+Rotate Y 90' CC:Arrow_Right
+Rotate Z 90' C:Page_Up
+Rotate Z 90' CC:Page_Down
+Rotate X 45' C:Shift+Arrow_UP
+Rotate X 45' CC:Shift+Arrow_Down
+Rotate Y 45' C:Shift+Arrow_Left
+Rotate Y 45' CC:Shift+Arrow_Right
+Rotate Z 45' C:Shift+Page_Up
+Rotate Z 45' CC:Shift+Page_Down
+Rotate X 15' C:Alt+Arrow_UP
+Rotate X 15' CC:Alt+Arrow_Down
+Rotate Y 15' C:Alt+Arrow_Left
+Rotate Y 15' CC:Alt+Arrow_Right
+Rotate Z 15' C:Alt+Page_Up
+Rotate Z 15' CC:Alt+Page_Down
+Rotate X 5' C:Alt+Shift+Arrow_UP
+Rotate X 5' CC:Alt+Shift+Arrow_Down
+Rotate Y 5' C:Alt+Shift+Arrow_Left
+Rotate Y 5' CC:Alt+Shift+Arrow_Right
+Rotate Z 5' C:Alt+Shift+Page_Up
+Rotate Z 5' CC:Alt+Shift+Page_Down
+Memorize Camera Pos1:Ctrl+1
+Memorize Camera Pos2:Ctrl+2
+Memorize Camera Pos3:Ctrl+3
+Memorize Camera Pos4:Ctrl+4
+Move Camera to Memorized Pos1:1
+Move Camera to Memorized Pos2:2
+Move Camera to Memorized Pos3:3
+Move Camera to Memorized Pos4:4
+Hide All Bricks:0
+Show All Bricks:-
+Show bricks sequencially:=
+Find/Replace:Ctrl+h
+Open Connectivity Editor:F12

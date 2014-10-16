@@ -1,8 +1,3 @@
-MOCBuilder Release
-==========
-Download link:
-
-==========  
 MOCBuilder Governance Document
 ==========  
 *this document is licensed under a Creative Commons Attribution-ShareAlike 4.0 International License .

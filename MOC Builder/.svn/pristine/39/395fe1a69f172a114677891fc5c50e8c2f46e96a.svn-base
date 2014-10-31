@@ -226,7 +226,6 @@ public class GlobalConnectivityManager {
 
 				Matrix4 newTransform = BrickSelectionManager.getInstance()
 						.getStartMoveTransformMatrix(part);
-				
 				newTransform.element[3][0] = testPosOfPart.x;
 				newTransform.element[3][1] = testPosOfPart.y;
 				newTransform.element[3][2] = testPosOfPart.z;

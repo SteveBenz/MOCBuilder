@@ -29,7 +29,6 @@ import LDraw.Support.type.LDrawGridTypeT;
 import Notification.ILDrawSubscriber;
 import Notification.INotificationMessage;
 import Notification.LDrawColorSelected;
-import Notification.LDrawDirectiveModified;
 import Notification.NotificationCenter;
 import Notification.NotificationMessageT;
 import OtherTools.Syringe;
@@ -353,16 +352,12 @@ public class ToolBarHandler extends SelectionAdapter implements KeyListener,
 								part.getLDrawColor(), color);
 						((LDrawPart) directive).setLDrawColor(color);
 						moreThanOne = true;
-						
-						NotificationCenter.getInstance().postNotification(
-								NotificationMessageT.LDrawDirectiveDidChange, new LDrawDirectiveModified(part));
 					}
 				}
 				if (moreThanOne)
 					LDrawUndoRedoManager.getInstance().pushUndoAction(
 							colorChangeAction);
-				// selectedButton.getShell().setVisible(false);				
-				
+				// selectedButton.getShell().setVisible(false);
 				NotificationCenter.getInstance().postNotification(
 						NotificationMessageT.NeedReDraw);
 			}

@@ -1,0 +1,350 @@
+package Window;
+
+import java.util.ArrayList;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.custom.TreeEditor;
+import org.eclipse.swt.dnd.DND;
+import org.eclipse.swt.dnd.DragSource;
+import org.eclipse.swt.dnd.DragSourceEvent;
+import org.eclipse.swt.dnd.DragSourceListener;
+import org.eclipse.swt.dnd.DropTarget;
+import org.eclipse.swt.dnd.DropTargetEvent;
+import org.eclipse.swt.dnd.DropTargetListener;
+import org.eclipse.swt.dnd.TextTransfer;
+import org.eclipse.swt.dnd.Transfer;
+import org.eclipse.swt.events.MenuEvent;
+import org.eclipse.swt.events.MenuListener;
+import org.eclipse.swt.events.MouseEvent;
+import org.eclipse.swt.events.MouseListener;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.events.SelectionListener;
+import org.eclipse.swt.graphics.Font;
+import org.eclipse.swt.graphics.FontData;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Composite;
+import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Decorations;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.Event;
+import org.eclipse.swt.widgets.Label;
+import org.eclipse.swt.widgets.Listener;
+import org.eclipse.swt.widgets.Menu;
+import org.eclipse.swt.widgets.MenuItem;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Text;
+import org.eclipse.swt.widgets.Tree;
+import org.eclipse.swt.widgets.TreeItem;
+
+import Command.LDrawColor;
+import Command.LDrawColorT;
+import LDraw.Files.LDrawFile;
+import LDraw.Files.LDrawMPDModel;
+import LDraw.Support.ColorLibrary;
+import Notification.ILDrawSubscriber;
+import Notification.INotificationMessage;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+import Resource.ResourceManager;
+
+public class ModelListView implements ILDrawSubscriber, Listener,
+		DragSourceListener {
+	private Display display;
+	private Shell shell;
+	private Composite parent;
+	private TreeEditor editor;
+
+	private Tree treeComponent = null;
+	private Image folderImage;
+
+	public ModelListView(Composite parent, int style) {
+		this.parent = parent;
+		display = parent.getDisplay();
+		shell = parent.getShell();
+
+		NotificationCenter.getInstance().addSubscriber(this,
+				NotificationMessageT.LDrawFileActiveModelDidChanged);
+
+		generateView(parent);
+		drawTree();
+
+	}
+
+	private void drawTree() {
+		Display.getDefault().asyncExec(new Runnable() {
+			public void run() {
+				MOCBuilder builder = MOCBuilder.getInstance();
+				LDrawFile file = builder.getWorkingLDrawFile();
+				if (file == null)
+					return;
+				if (!treeComponent.isDisposed()) {
+					treeComponent.setVisible(false);
+					treeComponent.removeAll();
+
+					LDrawMPDModel mainModel = null;
+					try {
+						mainModel = file.submodels().get(0);
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+					if (mainModel == null)
+						return;
+
+					TreeItem mainModelTreeItem = new TreeItem(treeComponent,
+							SWT.NONE);
+					mainModelTreeItem.setText(mainModel.modelName());
+					mainModelTreeItem.setData(mainModel);
+					mainModelTreeItem.setImage(folderImage);
+					if (MOCBuilder.getInstance().getActiveModel() == mainModel)
+						setBold(mainModelTreeItem);
+					for (LDrawMPDModel model : file.submodels()) {
+						if (model == mainModel)
+							continue;
+						TreeItem treeItem = new TreeItem(mainModelTreeItem,
+								SWT.NONE);
+						treeItem.setText(model.modelName().trim());
+						treeItem.setData(model);
+						if (MOCBuilder.getInstance().getActiveModel() == model)
+							setBold(treeItem);
+					}
+					mainModelTreeItem.setExpanded(true);
+					treeComponent.setVisible(true);
+				}
+			}
+		});
+	}
+
+	private void generateView(Composite parent) {
+		GridLayout layout = new GridLayout();
+		layout.marginTop = -5;
+		layout.marginLeft = -5;
+		layout.marginRight = -5;
+
+		Composite composite = new Composite(parent, SWT.NONE);
+		composite.setLayout(layout);
+		composite.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+
+		Label label = new Label(composite, SWT.NONE);
+		label.setText("Submodels");
+
+		treeComponent = new Tree(composite, SWT.MULTI | SWT.BORDER);
+		treeComponent.setLayout(new GridLayout());
+		treeComponent
+				.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true));
+
+		treeComponent.setMenu(createPopupMenu(parent.getShell()));
+
+		folderImage = ResourceManager.getInstance().getImage(display,
+				"/Resource/Image/folder_brick.png");
+
+		treeComponent.addMouseListener(new MouseListener() {
+
+			@Override
+			public void mouseUp(MouseEvent e) {
+
+			}
+
+			@Override
+			public void mouseDown(MouseEvent e) {
+			}
+
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				TreeItem[] selectedItems = treeComponent.getSelection();
+				if (selectedItems.length == 1) {
+					Object object = selectedItems[0].getData();
+					if (object instanceof LDrawMPDModel == false)
+						return;
+
+					MOCBuilder.getInstance().changeActiveModel(
+							(LDrawMPDModel) object);
+
+					setBold(selectedItems[0]);
+
+				}
+			}
+		});
+		
+		DragSource source = new DragSource(treeComponent, DND.DROP_COPY | DND.DROP_MOVE);
+		source.setTransfer(new Transfer[] { TextTransfer.getInstance() });
+		source.addDragListener(this);
+
+		editor = new TreeEditor(treeComponent);
+		editor.horizontalAlignment = SWT.LEFT;
+		editor.grabHorizontal = true;
+		editor.minimumWidth = 50;
+	}
+
+	@Override
+	public void receiveNotification(NotificationMessageT messageType,
+			INotificationMessage msg) {
+		display.asyncExec(new Runnable() {
+			@Override
+			public void run() {
+				drawTree();
+			}
+		});
+	}
+
+	private Menu createPopupMenu(Decorations parent) {
+		Menu menu = new Menu(parent, SWT.POP_UP);
+		final MenuItem renameItem = new MenuItem(menu, SWT.PUSH);
+		renameItem.setText("Rename");
+		renameItem.addSelectionListener(new SelectionListener() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				TreeItem[] selectedItems = treeComponent.getSelection();
+				if (selectedItems.length == 1) {
+					Object object = selectedItems[0].getData();
+					if (object instanceof LDrawMPDModel) {
+						LDrawMPDModel model = (LDrawMPDModel) object;
+						renameModel(selectedItems[0], model);
+					}
+				}
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+
+			}
+		});
+		final MenuItem deleteItem = new MenuItem(menu, SWT.PUSH);
+		deleteItem.setText("Delete");
+		deleteItem.addSelectionListener(new SelectionListener() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				TreeItem[] selectedItems = treeComponent.getSelection();
+				if (selectedItems.length == 1) {
+					Object object = selectedItems[0].getData();
+					if (object instanceof LDrawMPDModel) {
+						LDrawMPDModel model = (LDrawMPDModel) object;
+						MOCBuilder.getInstance().removeModel(model);
+					}
+				}
+				GlobalFocusManager.getInstance().forceFocusToMainView();
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+
+			}
+		});
+
+		menu.addMenuListener(new MenuListener() {
+
+			@Override
+			public void menuShown(MenuEvent e) {
+				int count = treeComponent.getSelectionCount();
+				if (count > 1) {
+					renameItem.setEnabled(false);
+					deleteItem.setEnabled(true);
+				} else if (count == 1) {
+					renameItem.setEnabled(true);
+					deleteItem.setEnabled(true);
+				} else {
+					renameItem.setEnabled(false);
+					deleteItem.setEnabled(false);
+				}
+			}
+
+			@Override
+			public void menuHidden(MenuEvent e) {
+			}
+		});
+
+		return menu;
+	}
+
+	private void renameModel(TreeItem item, LDrawMPDModel model) {
+		final Text newEditor = new Text(treeComponent, SWT.NONE);
+		newEditor.setText(model.modelName());
+		newEditor.addListener(SWT.FocusOut, this);
+		newEditor.addListener(SWT.KeyUp, this);
+		newEditor.selectAll();
+		newEditor.setFocus();
+		editor.setEditor(newEditor, item);
+	}
+
+	@Override
+	public void handleEvent(Event event) {
+		Text text = (Text) editor.getEditor();
+		if (event.keyCode == 0 || event.keyCode == SWT.CR) {
+			String name = text.getText();
+			TreeItem item = editor.getItem();
+			LDrawMPDModel model = (LDrawMPDModel) item.getData();
+			MOCBuilder.getInstance().renameModel(model, name);
+			item.setText(name);
+			text.dispose();
+		} else if (event.keyCode == SWT.ESC) {
+			text.dispose();
+		}
+
+	}
+
+	private void setBold(TreeItem selectedItem) {
+		Display display = treeComponent.getDisplay();
+		if (treeComponent.getFont() == null)
+			return;
+		FontData datas[] = treeComponent.getFont().getFontData();
+		for (FontData data : datas) {
+			data.setStyle(SWT.NORMAL);
+		}
+		Font normalFont = new Font(display, datas);
+		for (FontData data : datas) {
+			data.setStyle(SWT.BOLD);
+		}
+		Font boldFont = new Font(display, datas);
+		for (TreeItem item : treeComponent.getItems()) {
+			if (item.equals(selectedItem)) {
+				item.setFont(boldFont);
+			} else {
+				item.setFont(normalFont);
+			}
+			if (item.getItems().length != 0)
+				for (TreeItem item2 : item.getItems()) {
+					if (item2.equals(selectedItem)) {
+						item2.setFont(boldFont);
+					} else {
+						item2.setFont(normalFont);
+					}
+				}
+		}
+	}
+
+	@Override
+	public void dragStart(DragSourceEvent event) {
+		if (treeComponent.getSelection().length != 1)
+			return;
+		
+		LDrawColor color = ColorLibrary.sharedColorLibrary().colorForCode(
+				LDrawColorT.LDrawCurrentColor);
+
+		DNDTransfer.getInstance().setColor(color);
+		event.image = null;
+		
+		Object object = null;
+		Control control = ((DragSource) event.getSource()).getControl();
+		if (control.equals(treeComponent)) {
+			object = treeComponent.getSelection()[0].getData();			
+		}
+		if (object == null) {
+			return;
+		} else {
+			DNDTransfer.getInstance().setData(((LDrawMPDModel)object).modelName());
+		}		
+	}
+
+	@Override
+	public void dragSetData(DragSourceEvent event) {
+		if (TextTransfer.getInstance().isSupportedType(event.dataType)) {			
+			event.data = DNDTransfer.getInstance().getData();
+		}
+	}
+
+	@Override
+	public void dragFinished(DragSourceEvent event) {
+		DNDTransfer.getInstance().end();
+	}
+}

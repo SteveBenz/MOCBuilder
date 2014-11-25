@@ -1,0 +1,52 @@
+package UndoRedo;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import Builder.DirectiveSelectionManager;
+import Command.LDrawDrawableElement;
+import Command.LDrawPart;
+import Common.Matrix4;
+import Connectivity.GlobalConnectivityManager;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+
+public class HideShowLDrawElementAction implements IAction {
+	private ArrayList<LDrawDrawableElement> drawableList;
+	private boolean isHide = false;
+
+	public HideShowLDrawElementAction() {
+		drawableList = new ArrayList<LDrawDrawableElement>();
+	}
+
+	public void addPartForHide(LDrawDrawableElement element) {
+		drawableList.add(element);
+		isHide = true;
+	}
+
+	public void addPartForShow(LDrawDrawableElement element) {
+		drawableList.add(element);
+		isHide = false;
+	}
+
+	@Override
+	public void undoAction() {
+//		 System.out.println("undo");
+		for (LDrawDrawableElement element : drawableList){
+			element.setHidden(!isHide);
+			DirectiveSelectionManager.getInstance().updateScreenProjectionVerticesMap(element);
+		}
+		
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedRedraw);
+	}
+
+	@Override
+	public void redoAction() {
+		for (LDrawDrawableElement element : drawableList){
+			element.setHidden(isHide);
+			DirectiveSelectionManager.getInstance().updateScreenProjectionVerticesMap(element);
+		}
+		DirectiveSelectionManager.getInstance().clearSelection();
+		NotificationCenter.getInstance().postNotification(NotificationMessageT.NeedRedraw);
+	}
+}

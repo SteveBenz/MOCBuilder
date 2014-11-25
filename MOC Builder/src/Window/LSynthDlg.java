@@ -1,0 +1,346 @@
+package Window;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Map.Entry;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.DisposeEvent;
+import org.eclipse.swt.events.MouseEvent;
+import org.eclipse.swt.events.MouseListener;
+import org.eclipse.swt.events.SelectionEvent;
+import org.eclipse.swt.events.SelectionListener;
+import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.layout.GridData;
+import org.eclipse.swt.widgets.Button;
+import org.eclipse.swt.widgets.Dialog;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.MessageBox;
+import org.eclipse.swt.widgets.Shell;
+import org.eclipse.swt.widgets.Table;
+import org.eclipse.swt.widgets.TableColumn;
+import org.eclipse.swt.widgets.TableItem;
+import org.eclipse.swt.widgets.TreeItem;
+
+import Builder.BuilderConfigurationManager;
+import Builder.DirectiveSelectionManager;
+import Builder.ShortcutKeyManager.ShortcutKeyT;
+import Command.LDrawColorT;
+import Command.LDrawLSynth;
+import Command.LDrawPart;
+import LDraw.Files.LDrawStep;
+import LDraw.Support.ColorLibrary;
+import LDraw.Support.LDrawDirective;
+import Notification.LDrawDirectiveDidAdded;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+
+public class LSynthDlg extends Dialog {
+
+	final static String LSynthCommandPath = BuilderConfigurationManager
+			.getDefaultDataDirectoryPath() + "lsynthCommand.list";
+	
+	protected Object result;
+	protected Shell shlLsynthCommandDlg;
+	private Table table;
+
+	private ColorPicker colorPicker;
+
+	private Button btn_New;
+	private Button btn_Modify;
+	private Button btn_Remove;
+
+	/**
+	 * Create the dialog.
+	 * 
+	 * @param parent
+	 * @param style
+	 */
+	public LSynthDlg(Shell parent, int style) {
+		super(parent, style);
+		setText("SWT Dialog");
+	}
+
+	/**
+	 * Open the dialog.
+	 * 
+	 * @return the result
+	 */
+	public Object open() {
+		createContents();
+		shlLsynthCommandDlg.open();
+		shlLsynthCommandDlg.layout();
+		Display display = getParent().getDisplay();
+		while (!shlLsynthCommandDlg.isDisposed()) {
+			if (!display.readAndDispatch()) {
+				display.sleep();
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Create contents of the dialog.
+	 */
+	private void createContents() {
+		shlLsynthCommandDlg = new Shell(getParent(), getStyle());
+		shlLsynthCommandDlg.setSize(550, 281);
+		shlLsynthCommandDlg.setText("LSynth Commands");
+
+		table = new Table(shlLsynthCommandDlg, SWT.BORDER | SWT.FULL_SELECTION);
+		table.setBounds(10, 10, 434, 234);
+		table.setHeaderVisible(true);
+		table.setLinesVisible(true);
+		
+		table.addMouseListener(new MouseListener() {
+
+			@Override
+			public void mouseUp(MouseEvent e) {
+
+			}
+
+			@Override
+			public void mouseDown(MouseEvent e) {				
+			}
+
+			@Override
+			public void mouseDoubleClick(MouseEvent e) {
+				handleSelect();
+			}
+		});
+
+		btn_New = new Button(shlLsynthCommandDlg, SWT.NONE);
+		btn_New.setBounds(455, 10, 80, 25);
+		btn_New.setText("New");
+		btn_New.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent arg0) {
+				TextInputDialog textInputDlg = new TextInputDialog(Display
+						.getCurrent().getActiveShell(), SWT.DIALOG_TRIM);
+				textInputDlg.setText("New LSynth Command");
+				String text = (String) textInputDlg.open();
+				if (text == null)
+					return;
+				commandList.add(text);
+				generateTable();
+				writeToFile();
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent arg0) {
+				// TODO Auto-generated method stub
+
+			}
+		});
+
+		btn_Modify = new Button(shlLsynthCommandDlg, SWT.NONE);
+		btn_Modify.setBounds(455, 40, 80, 25);
+		btn_Modify.setText("Modify");
+		btn_Modify.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent arg0) {
+				TableItem[] selectedItems = table.getSelection();
+				if (selectedItems == null || selectedItems.length != 1)
+					return;
+
+				int index = table.indexOf(selectedItems[0]);
+
+				String command = commandList.get(index);
+				TextInputDialog textInputDlg = new TextInputDialog(Display
+						.getCurrent().getActiveShell(), SWT.DIALOG_TRIM);
+				textInputDlg.setText("Modify LSynth Command");
+
+				String text = (String) textInputDlg.open(command);
+				if (text == null)
+					return;
+
+				commandList.remove(command);
+				commandList.add(index, text);
+				generateTable();
+				writeToFile();
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent arg0) {
+				// TODO Auto-generated method stub
+
+			}
+		});
+
+		btn_Remove = new Button(shlLsynthCommandDlg, SWT.NONE);
+		btn_Remove.setBounds(455, 70, 80, 25);
+		btn_Remove.setText("Remove");
+		btn_Remove.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent arg0) {
+				TableItem[] selectedItems = table.getSelection();
+				if (selectedItems == null || selectedItems.length == 0)
+					return;
+
+				for (TableItem item : selectedItems) {
+					commandList.remove(item.getData());
+				}
+				generateTable();
+				writeToFile();
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent arg0) {
+				// TODO Auto-generated method stub
+
+			}
+		});
+
+		Button btn_Color = new Button(shlLsynthCommandDlg, SWT.FLAT);
+		btn_Color.setBounds(465, 160, 60, 35);
+		btn_Color.setLayoutData(new GridData(SWT.CENTER, SWT.CENTER, false,
+				false));
+		colorPicker = new ColorPicker(btn_Color, "LSynth Color");
+		colorPicker.addSelectionListener(new SelectionListener() {
+			@Override
+			public void widgetSelected(SelectionEvent event) {
+				Button selectedButton = (Button) event.widget;
+				LDrawColorT colorT = (LDrawColorT) selectedButton.getData();
+				colorPicker.setColor(colorT);
+				selectedButton.getShell().setVisible(false);
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent event) {
+			}
+		});
+		btn_Color.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent event) {
+				colorPicker.showDialog();
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent event) {
+			}
+		});
+
+		Button btnNewButton_2 = new Button(shlLsynthCommandDlg, SWT.NONE);
+		btnNewButton_2.setBounds(455, 200, 80, 45);
+		btnNewButton_2.setText("Select");
+		btnNewButton_2.addSelectionListener(new SelectionListener() {
+
+			@Override
+			public void widgetSelected(SelectionEvent arg0) {
+				handleSelect();
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent arg0) {
+				// TODO Auto-generated method stub
+
+			}
+		});
+
+		loadFromFile();
+		generateTable();
+	}
+
+	private void generateTable() {
+		table.setVisible(false);
+		table.removeAll();
+		String[] titles = { "Index", "Command" };
+		for (int loopIndex = 0; loopIndex < titles.length; loopIndex++) {
+			TableColumn column = new TableColumn(table, SWT.NULL);
+			column.setText(titles[loopIndex]);
+		}
+
+		int index = 0;
+		for (String command : commandList) {
+			final TableItem item = new TableItem(table, SWT.NULL);
+			item.setText(0, "" + index);
+			item.setText(1, command);
+			item.setData(command);
+		}
+		for (int loopIndex = 0; loopIndex < titles.length; loopIndex++) {
+			table.getColumn(loopIndex).pack();
+		}
+		table.setVisible(true);
+	}
+
+	private ArrayList<String> commandList = new ArrayList<String>();
+
+	private void loadFromCache() {
+		if (commandList == null)
+			commandList = new ArrayList<String>();
+		commandList.clear();
+
+		commandList.add("ELECTRIC_NXT_CABLE");
+		commandList.add("ELECTRIC_POWER_FUNCTIONS_CABLE");
+		commandList.add("ELECTRIC_RCX_CABLE");
+		commandList.add("FIBER_OPTICS_CABLE");
+		commandList.add("");
+	}
+	
+	private void loadFromFile(){
+		commandList.clear();
+		
+		File categoryFile = new File(LSynthCommandPath);
+		if (categoryFile.exists()) {
+			try {
+				BufferedReader reader = new BufferedReader(new FileReader(
+						categoryFile));
+				String line;
+				while ((line = reader.readLine()) != null) {
+					if (line.trim().equals(""))
+						continue;
+					commandList.add(line);
+				}
+				reader.close();
+				return;
+			} catch (Exception e) {
+				e.printStackTrace();
+				categoryFile.delete();
+			}
+		}else
+			loadFromCache();
+	}
+	
+	
+	
+	private void writeToFile(){
+		File categoryFile = new File(LSynthCommandPath);
+		String contents = "";
+		for (String command : commandList)
+			contents += command+"\r\n";
+
+		try {
+			FileWriter fw = new FileWriter(categoryFile);
+			fw.write(contents);
+			fw.flush();
+			fw.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	
+	private void handleSelect(){
+		TableItem[] selectedItems = table.getSelection();
+		if (selectedItems == null || selectedItems.length != 1)
+			return;
+
+		String command = (String)selectedItems[0].getData();				
+		LDrawLSynth lsynth = new LDrawLSynth();
+		lsynth.setLsynthType(command);
+		lsynth.setLDrawColor(ColorLibrary.sharedColorLibrary()
+				.colorForCode(colorPicker.getSelectedColor()));
+
+		MOCBuilder.getInstance().addDirectiveToWorkingFile(lsynth);
+		
+		Display.getCurrent().getActiveShell().dispose();
+	}
+}

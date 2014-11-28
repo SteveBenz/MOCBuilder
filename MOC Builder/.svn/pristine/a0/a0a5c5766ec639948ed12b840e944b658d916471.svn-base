@@ -1,0 +1,707 @@
+package ConnectivityEditor.Window;
+
+import java.util.LinkedHashMap;
+import java.util.Map.Entry;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.KeyEvent;
+import org.eclipse.swt.events.KeyListener;
+import org.eclipse.swt.events.MouseEvent;
+import org.eclipse.swt.events.MouseListener;
+import org.eclipse.swt.events.MouseMoveListener;
+import org.eclipse.swt.events.MouseTrackListener;
+import org.eclipse.swt.events.MouseWheelListener;
+
+import BrickControlGuide.IGuideRenderer;
+import BrickControlGuide.RotationGuide;
+import Builder.BuilderConfigurationManager;
+import Builder.CameraMoveShortCutManager;
+import Builder.MainCamera;
+import Builder.MouseControlMode;
+import Builder.MouseControlMode.MouseControlModeT;
+import Builder.ShortcutKeyManager;
+import Builder.ShortcutKeyManager.ShortcutKeyT;
+import Common.Vector2f;
+import Common.Vector3f;
+import Connectivity.Connectivity;
+import Connectivity.Direction6T;
+import Connectivity.IConnectivity;
+import ConnectivityEditor.Connectivity.ConnectivityRendererForConnectivityEditor;
+import ConnectivityEditor.ConnectivityControlGuide.ConnectivityMovementGuideRenderer;
+import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoRedoManager;
+import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoWrapper;
+import LDraw.Support.MatrixMath;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+import OtherTools.Syringe;
+import Window.KeyCodeStringUtil;
+
+public class ConnectivityEditorEventHandler implements MouseListener,
+		MouseTrackListener, MouseMoveListener, MouseWheelListener, KeyListener {
+
+	@Override
+	public void mouseScrolled(MouseEvent e) {
+		camera.zoom(e);
+	}
+
+	private boolean isDragStarted = false;
+	private Vector2f startDragMousePos = new Vector2f();
+
+	@Override
+	public void mouseMove(MouseEvent e) {
+		GlobalMousePositionForConnectivityEditor.getInstance().setPos(e.x, e.y);
+
+		int mouseButtonMask = e.stateMask
+				& (SWT.BUTTON1 | SWT.BUTTON2 | SWT.BUTTON3);
+		if (mouseButtonMask == 0)
+			handleMouseMove(e);
+		else if (Syringe.getInstance().isActivated() == false
+				|| MouseControlMode.getCurrentMode() != MouseControlModeT.Seletion) {
+			if (isDragStarted == false) {
+				if (mouseButtonMask == SWT.BUTTON1)
+					handleMouseLeftButtonDragStart(e);
+				else if (mouseButtonMask == SWT.BUTTON2)
+					handleMouseWheelButtonDragStart(e);
+				else if (mouseButtonMask == SWT.BUTTON3)
+					handleMouseRightButtonDragStart(e);
+				isDragStarted = true;
+			}
+
+			if (mouseButtonMask == SWT.BUTTON1)
+				handleMouseLeftButtonDragMove(e);
+			else if (mouseButtonMask == SWT.BUTTON2)
+				handleMouseWheelButtonDrag(e);
+			else if (mouseButtonMask == SWT.BUTTON3)
+				handleMouseRightButtonDrag(e);
+		}
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedRedraw);
+	}
+
+	private boolean isDoubleClick = false;
+
+	@Override
+	public void mouseDoubleClick(MouseEvent e) {
+		isDoubleClick = true;
+	}
+
+	private void handleMouseWheelButtonClicked(MouseEvent e) {
+	}
+
+	@Override
+	public void mouseDown(MouseEvent e) {
+		isDragStarted = false;
+		startDragMousePos.setX(e.x);
+		startDragMousePos.setY(e.y);
+	}
+
+	@Override
+	public void mouseUp(MouseEvent e) {
+		// handle dragDrop, click
+		int mouseButtonMask = e.stateMask
+				& (SWT.BUTTON1 | SWT.BUTTON2 | SWT.BUTTON3);
+		if (isDragStarted == true) { // handle dragdrop
+			if (mouseButtonMask == 0) {
+				// nothing
+			} else {
+				if (mouseButtonMask == SWT.BUTTON1)
+					handleMouseLeftButtonDragDrop(e);
+				else if (mouseButtonMask == SWT.BUTTON2)
+					handleMouseWheelButtonDragDrop(e);
+				else if (mouseButtonMask == SWT.BUTTON3)
+					handleMouseRightButtonDragDrop(e);
+			}
+		} else if (isDoubleClick == false
+				&& (MatrixMath.compareFloat(startDragMousePos.getX(), e.x) == 0 && MatrixMath
+						.compareFloat(startDragMousePos.getY(), e.y) == 0)) {// handleClick
+			if (mouseButtonMask == SWT.BUTTON1) {
+				if ((e.stateMask & SWT.ALT) != 0)
+					handleMouseWheelButtonClicked(e);
+				else
+					handleMouseLeftButtonClicked(e);
+			} else if (mouseButtonMask == SWT.BUTTON2)
+				handleMouseWheelButtonClicked(e);
+			else if (mouseButtonMask == SWT.BUTTON3)
+				handleMouseRightButtonClicked(e);
+		} else {// double click
+				// release isDoubleClick.
+				// double click is handled by the method
+				// mouseDoubleClick(MouseEvent e);
+			isDoubleClick = false;
+		}
+
+		isDragStarted = false;
+	}
+
+	@Override
+	public void mouseEnter(MouseEvent e) {
+	}
+
+	@Override
+	public void mouseExit(MouseEvent e) {
+		GlobalMousePositionForConnectivityEditor.getInstance().setPos(400, 400);
+	}
+
+	@Override
+	public void mouseHover(MouseEvent e) {
+	}
+
+	private ConnectivityEditor cEditor = null;
+	private MainCamera camera = null;
+	private ConnectivitySelectionManager connectivitySelectionManager = null;
+	private ConnectivityMovementGuideRenderer connectivityMovementGuideRenderer;
+	private ConnectivityRendererForConnectivityEditor connectivityRenderer;
+
+	private Vector2f startMoveMousePos = null;
+	private Vector3f startMoveWorldPos = null;
+	private Vector3f startMoveConnPos = null;
+	private Connectivity startMoveConn = null;
+
+	public ConnectivityEditorEventHandler(ConnectivityEditor cEditor) {
+		this.cEditor = cEditor;
+		connectivitySelectionManager = ConnectivitySelectionManager
+				.getInstance();
+		camera = cEditor.getCamera();
+		connectivityMovementGuideRenderer = cEditor
+				.getConnMovementGuideRenderer();
+		connectivityRenderer = cEditor.getConnectivityRenderer();
+	}
+
+	private void handleMouseMove(MouseEvent e) {
+	}
+
+	private void handleMouseLeftButtonDragStart(MouseEvent e) {
+		// System.out.println("handleMouseLeftButtonDragStart");
+
+		// handle Camera Panning
+		if (MouseControlMode.getCurrentMode() == MouseControlModeT.MoveCamera) {
+			camera.startPan(e.x, e.y);
+			return;
+		} else if (MouseControlMode.getCurrentMode() == MouseControlModeT.RotateCamera) {
+			camera.startRotate(e.x, e.y);
+			return;
+		}
+
+		// handle Selection by Drag
+		IConnectivity pointingConn = connectivityRenderer
+				.getHittedConnectivity(camera, e.x, e.y);
+		IGuideRenderer selectedAxisGuide = connectivityMovementGuideRenderer
+				.getHittedAxisArrow(e.x, e.y);
+
+		// if (pointingConn == null && selectedAxisGuide == null) {
+		// cEditor.getBrickSelectionInfoRenderer().setOrigin(
+		// new Vector2f(e.x, e.y));
+		// cEditor.getBrickSelectionInfoRenderer().isVisible(true);
+		// return;
+		// }
+
+		if (pointingConn != null)
+			startMoveConn = pointingConn.getConnectivity();
+		// is Pointing a guide mark
+		if (selectedAxisGuide != null
+				&& (pointingConn == null || selectedAxisGuide
+						.getLastHittedDistance() < connectivityRenderer
+						.getLastHittedDistance())) {// guiding mark is
+			// pressed
+			connectivityMovementGuideRenderer
+					.axisSelectedType(selectedAxisGuide);
+			startMoveMousePos = new Vector2f(e.x, e.y);
+			startMoveWorldPos = camera.screenToWorldXZ(e.x, e.y, 0);
+			startMoveWorldPos.y = camera.screenToWorldXY(e.x, e.y, 0).y;
+			ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.ConnectivityControl_Guide;
+		} else if (pointingConn != null) {// a brick is pointing
+			if (connectivitySelectionManager.containsInSelection(startMoveConn) == false) {
+				startMoveConn.setSelected(true);
+			}
+			// init startPos to Move Brick
+			ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.ConnectivityControl_Direct;
+			startMoveWorldPos = connectivityRenderer.getHittedPos(camera, e.x, e.y);
+			startMoveConnPos = new Vector3f(startMoveConn.getCurrentPos());
+		}
+
+		if (pointingConn != null) {
+			connectivitySelectionManager.updateStartMoveTransformMatrixMap();
+		}
+	}
+
+	private void handleMouseLeftButtonDragDrop(MouseEvent e) {
+		// System.out.println("handleMouseLeftButtonDragDrop");
+		switch (ConnectivityControlModeT.currentControlMode) {
+		case ConnectivitySelectingDrag:
+			if (connectivitySelectionManager.isEmpty())
+				ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.None;
+			else
+				ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.ConnectivityControl;
+			// cEditor.getBrickSelectionInfoRenderer().isVisible(false);
+			handleControlGuideDisplay(true);
+			break;
+		case ConnectivityControl_Direct:
+			handleChangeConnTransform();
+			connectivitySelectionManager.updateStartMoveTransformMatrixMap();
+			break;
+		case ConnectivityControl_Guide:
+			handleChangeConnTransform();
+			connectivityMovementGuideRenderer.axisSelectedType(null);
+			break;
+		default:
+			break;
+		}
+
+		ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.None;
+	}
+
+	private void handleMouseLeftButtonDragMove(MouseEvent e) {
+		if (MouseControlMode.getCurrentMode() == MouseControlModeT.MoveCamera) {
+			handleCameraMove(e);
+			return;
+		} else if (MouseControlMode.getCurrentMode() == MouseControlModeT.RotateCamera) {
+			camera.rotate(e.x, e.y);
+			return;
+		}
+
+		switch (ConnectivityControlModeT.currentControlMode) {
+		case None:
+			ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.ConnectivitySelectingDrag;
+		case ConnectivitySelectingDrag:
+			// cEditor.getBrickSelectionInfoRenderer().setEnd(
+			// new Vector2f(e.x, e.y));
+			// Box2 bounds =
+			// cEditor.getBrickSelectionInfoRenderer().getBounds();
+			// connectivitySelectionManager.selectByDragging(bounds);
+			break;
+		case ConnectivityControl_Direct: {
+			if (startMoveWorldPos == null || startMoveConn == null) {
+				ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.ConnectivitySelectingDrag;
+				return;
+			}
+			if (connectivitySelectionManager.containsInSelection(startMoveConn) == false) {
+				connectivitySelectionManager.clearSelection();
+				connectivitySelectionManager
+						.addConnectivityToSelection(startMoveConn);
+			}
+
+			if (cEditor.getHittedPos(e.x, e.y, true) == null)
+				return;
+
+			Vector3f currentMoveWorldPos = new Vector3f(cEditor.getHittedPos(
+					e.x, e.y, true));
+			
+
+			Vector3f moveByInWorld = currentMoveWorldPos.sub(startMoveWorldPos);
+
+			if (moveByInWorld.length() > 0) {
+				startMoveConn.moveBy(moveByInWorld);
+				connectivitySelectionManager
+						.moveSelectedConnectivityBy(startMoveConn
+								.getConnectivity());
+				startMoveWorldPos = currentMoveWorldPos;
+			}
+		}
+			break;
+		case ConnectivityControl_Guide: {
+			if (startMoveWorldPos == null)
+				return;
+			Vector3f currentMoveWorldPos = camera.screenToWorldXZ(e.x, e.y, 0);
+			if (currentMoveWorldPos == null)
+				return;
+			Vector2f directionForX = null;
+			Vector2f directionForZ = null;
+			Vector2f directionForY = null;
+			Vector2f temp = camera.getWorldToScreenPos(new Vector3f(), false);
+			Vector2f tempY = camera.getWorldToScreenPos(new Vector3f(0, -1, 0),
+					false);
+			Vector2f tempX = camera.getWorldToScreenPos(new Vector3f(1, 0, 0),
+					false);
+			Vector2f tempZ = camera.getWorldToScreenPos(new Vector3f(0, 0, 1),
+					false);
+			if (temp != null && tempX != null) {
+				directionForX = temp.sub(tempX);
+				directionForX.scale(1 / directionForX.length());
+			}
+			if (temp != null && tempY != null) {
+				directionForY = temp.sub(tempY);
+				directionForY.scale(1 / directionForY.length());
+			}
+			if (temp != null && tempZ != null) {
+				directionForZ = temp.sub(tempZ);
+				directionForZ.scale(1 / directionForZ.length());
+			}
+			// System.out.println(movedByY);
+			Vector3f moveByInWorld = new Vector3f();
+			moveByInWorld.y = directionForY.getY()
+					* (startMoveMousePos.getY() - e.y);
+			moveByInWorld.x = directionForX.getX()
+					* (startMoveMousePos.getX() - e.x) - directionForX.getY()
+					* (startMoveMousePos.getY() - e.y);
+			moveByInWorld.z = directionForZ.getX()
+					* (startMoveMousePos.getX() - e.x) - directionForZ.getY()
+					* (startMoveMousePos.getY() - e.y);
+
+			moveByInWorld = moveByInWorld.scale(0.5f);
+
+			IGuideRenderer selectedGuide = connectivityMovementGuideRenderer
+					.getSelectedGuide();
+
+			if (selectedGuide != null) {
+				boolean isRotation = false;
+				if (selectedGuide instanceof RotationGuide)
+					isRotation = true;
+
+				Vector3f guideDirection = new Vector3f(
+						selectedGuide.getAxisDirectionVector());
+
+				float projectedDistance = moveByInWorld.dot(guideDirection);
+				moveByInWorld = guideDirection.scale(projectedDistance);
+				// moveByInWorld.round();
+
+				if (isRotation) {
+					projectedDistance = Math.abs(projectedDistance);
+					connectivityMovementGuideRenderer.getConn().rotateBy(
+							projectedDistance / 10, moveByInWorld);
+					connectivitySelectionManager
+							.moveSelectedConnectivityBy(connectivityMovementGuideRenderer
+									.getConn().getConnectivity());
+
+				} else {
+					float scale = camera.getScreenToWorldDistance(1) * 2;
+					moveByInWorld = guideDirection.scale(projectedDistance);
+					moveByInWorld = moveByInWorld.scale(scale);
+					moveByInWorld.round();
+
+					connectivityMovementGuideRenderer.getConn().moveTo(
+							new Vector3f(connectivityMovementGuideRenderer
+									.getConn().getCurrentPos())
+									.add(moveByInWorld));
+
+					connectivitySelectionManager
+							.moveSelectedConnectivityBy(connectivityMovementGuideRenderer
+									.getConn().getConnectivity());
+				}
+				startMoveWorldPos = currentMoveWorldPos;
+				startMoveMousePos = new Vector2f(e.x, e.y);
+			}
+		}
+			break;
+		default:
+			break;
+		}
+
+	}
+
+	private void handleCameraMove(MouseEvent e) {
+		camera.pan(e.x, e.y);
+		connectivitySelectionManager.updateScreenProjectionVerticesMapAll();
+
+		return;
+	}
+
+	private void handleMouseRightButtonDragStart(MouseEvent e) {
+		// System.out.println("handleMouseRightButtonDraggedStart");
+		camera.startRotate(e.x, e.y);
+	}
+
+	private void handleMouseRightButtonDragDrop(MouseEvent e) {
+		// System.out.println("handleMouseRightButtonDraggedDrop");
+		connectivitySelectionManager.updateScreenProjectionVerticesMapAll();
+	}
+
+	private void handleMouseRightButtonDrag(MouseEvent e) {
+		// System.out.println("handleMouseRightButtonDragged");
+		camera.rotate(e.x, e.y);
+	}
+
+	private void handleMouseWheelButtonDragStart(MouseEvent e) {
+		// System.out.println("handleMouseWheelButtonDragStart");
+		camera.startPan(e.x, e.y);
+	}
+
+	private void handleMouseWheelButtonDragDrop(MouseEvent e) {
+		// System.out.println("handleMouseWheelButtonDragDrop");
+	}
+
+	private void handleMouseWheelButtonDrag(MouseEvent e) {
+		handleCameraMove(e);
+	}
+
+	private void handleMouseLeftButtonClicked(MouseEvent e) {
+		IConnectivity conn = ConnectivityEditor.getInstance()
+				.getConnectivityRenderer()
+				.getHittedConnectivity(camera, e.x, e.y);
+		if (conn != null) {
+			connectivitySelectionManager.addConnectivityToSelection(conn
+					.getConnectivity());
+			handleControlGuideDisplay(false);
+		} else {
+			connectivitySelectionManager.clearSelection();
+		}
+	}
+
+	private void handleControlGuideDisplay(boolean showGroupControlGuide) {
+
+		Connectivity lastSelectedConn = null;
+
+		if (connectivitySelectionManager.isEmpty())
+			lastSelectedConn = null;
+		else
+			lastSelectedConn = connectivitySelectionManager
+					.getSelectedLastConnectivity();
+
+		// if (showGroupControlGuide)
+		connectivityMovementGuideRenderer.setConn(lastSelectedConn);
+	}
+
+	private void handleChangeConnTransform() {
+		ConnectivityEditorUndoWrapper.getInstance()
+				.handleTransformSelectedDirective();
+	}
+
+	private void handleMouseRightButtonClicked(MouseEvent e) {
+
+		// System.out.println("Mouse Right Button Clicked ");
+	}
+
+	int indexForTest = 0;
+
+	@Override
+	public void keyPressed(KeyEvent event) {
+		LinkedHashMap<ShortcutKeyT, String> keyMap = ShortcutKeyManager
+				.getInstance().getKeyMap();
+		String keyCodeString = KeyCodeStringUtil.getKeyCodeString(event);
+
+		// System.out.println(keyCodeString);
+		ShortcutKeyT function = null;
+		for (Entry<ShortcutKeyT, String> entry : keyMap.entrySet()) {
+			if (entry.getValue().toLowerCase()
+					.equals(keyCodeString.toLowerCase())) {
+				function = entry.getKey();
+				break;
+			}
+		}
+
+		if (function == null)
+			return;
+
+		switch (function) {
+		case CancelSelection:
+			if (connectivitySelectionManager.isEmpty() == false)
+				connectivitySelectionManager.clearSelection();
+			connectivityMovementGuideRenderer.axisSelectedType(null);
+			ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.None;
+			cEditor.getMetaInfoRenderer().setShowBaseplate(
+					BuilderConfigurationManager.getInstance()
+							.isUseDefaultBaseplate());
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.EscKeyPressed);
+			break;
+		case Save:
+			cEditor.saveFile();
+			break;
+		case MemorizeCameraPos1:
+		case MemorizeCameraPos2:
+		case MemorizeCameraPos3:
+		case MemorizeCameraPos4:
+			CameraMoveShortCutManager.getInstance().regPos("" + event.keyCode,
+					camera.getLookAtPos());
+			break;
+		case MoveCameraToPos1:
+		case MoveCameraToPos2:
+		case MoveCameraToPos3:
+		case MoveCameraToPos4:
+			Vector3f pos = CameraMoveShortCutManager.getInstance().getPos(
+					"" + event.keyCode);
+			if (pos != null) {
+				camera.moveTo(pos);
+				connectivitySelectionManager
+						.updateScreenProjectionVerticesMapAll();
+			}
+			break;
+		case Cut:
+			// CopyNPasteManager.getInstance().setCutList(
+			// connectivitySelectionManager.getSelectedConnectivityList());
+			break;
+		case Undo:
+			ConnectivityEditorUndoRedoManager.getInstance().undo();
+			break;
+		case Redo:
+			ConnectivityEditorUndoRedoManager.getInstance().redo();
+			break;
+		case Copy:
+			// CopyNPasteManager.getInstance().setCopyList(
+			// connectivitySelectionManager.getSelectedDirectiveList());
+			break;
+		case Paste:
+			// Vector2f mousePos = GlobalMousePosition.getInstance().getPos();
+			// CopyNPasteManager.getInstance().paste(
+			// cEditor.getHittedPos(mousePos.getX(), mousePos.getY(),
+			// false));
+
+			break;
+		case Delete: 
+			ConnectivityEditorUndoWrapper.getInstance()
+					.removeSelectedDirective();
+			GlobalFocusManagerForConnectivityEditor.getInstance()
+					.forceFocusToMainView();
+			break;
+		case RotateX90C:
+			handleRotateSelectedConn(new Vector3f(90, 0, 0));
+			break;
+		case RotateX45C:
+			handleRotateSelectedConn(new Vector3f(45, 0, 0));
+			break;
+		case RotateX15C:
+			handleRotateSelectedConn(new Vector3f(15, 0, 0));
+			break;
+		case RotateX5C:
+			handleRotateSelectedConn(new Vector3f(5, 0, 0));
+			break;
+		case RotateX90CC:
+			handleRotateSelectedConn(new Vector3f(-90, 0, 0));
+			break;
+		case RotateX45CC:
+			handleRotateSelectedConn(new Vector3f(-45, 0, 0));
+			break;
+		case RotateX15CC:
+			handleRotateSelectedConn(new Vector3f(-15, 0, 0));
+			break;
+		case RotateX5CC:
+			handleRotateSelectedConn(new Vector3f(-5, 0, 0));
+			break;
+		case RotateY90C:
+			handleRotateSelectedConn(new Vector3f(0, -90, 0));
+			break;
+		case RotateY45C:
+			handleRotateSelectedConn(new Vector3f(0, -45, 0));
+			break;
+		case RotateY15C:
+			handleRotateSelectedConn(new Vector3f(0, -15, 0));
+			break;
+		case RotateY5C:
+			handleRotateSelectedConn(new Vector3f(0, -5, 0));
+			break;
+		case RotateY90CC:
+			handleRotateSelectedConn(new Vector3f(0, 90, 0));
+			break;
+		case RotateY45CC:
+			handleRotateSelectedConn(new Vector3f(0, 45, 0));
+			break;
+		case RotateY15CC:
+			handleRotateSelectedConn(new Vector3f(0, 15, 0));
+			break;
+		case RotateY5CC:
+			handleRotateSelectedConn(new Vector3f(0, 5, 0));
+			break;
+		case RotateZ90C:
+			handleRotateSelectedConn(new Vector3f(0, 0, 90));
+			break;
+		case RotateZ45C:
+			handleRotateSelectedConn(new Vector3f(0, 0, 45));
+			break;
+		case RotateZ15C:
+			handleRotateSelectedConn(new Vector3f(0, 0, 15));
+			break;
+		case RotateZ5C:
+			handleRotateSelectedConn(new Vector3f(0, 0, 5));
+			break;
+		case RotateZ90CC:
+			handleRotateSelectedConn(new Vector3f(0, 0, -90));
+			break;
+		case RotateZ45CC:
+			handleRotateSelectedConn(new Vector3f(0, 0, -45));
+			break;
+		case RotateZ15CC:
+			handleRotateSelectedConn(new Vector3f(0, 0, -15));
+			break;
+		case RotateZ5CC:
+			handleRotateSelectedConn(new Vector3f(0, 0, -5));
+			break;
+		case MoveXF:
+			handleMoveSelectedConn(Direction6T.X_Plus);
+			break;
+		case MoveXB:
+			handleMoveSelectedConn(Direction6T.X_Minus);
+			break;
+		case MoveYF:
+			handleMoveSelectedConn(Direction6T.Y_Minus);
+			break;
+		case MoveYB:
+			handleMoveSelectedConn(Direction6T.Y_Plus);
+			break;
+		case MoveZF:
+			handleMoveSelectedConn(Direction6T.Z_Plus);
+			break;
+		case MoveZB:
+			handleMoveSelectedConn(Direction6T.Z_Minus);
+			break;
+		case MoveCamera:
+			Vector2f currentMousePos = GlobalMousePositionForConnectivityEditor
+					.getInstance().getPos();
+			pos = cEditor.getHittedPos(currentMousePos.getX(),
+					currentMousePos.getY(), true);
+			cEditor.getCamera().moveTo(pos);
+			break;
+		default:
+			System.out.println("Error!!");
+		}
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedRedraw);
+	}
+
+	private void handleMoveSelectedConn(Direction6T direction) {
+		if (connectivitySelectionManager.isEmpty())
+			return;
+		Connectivity conn = connectivitySelectionManager
+				.getSelectedConnectivityList().get(0);
+		Vector3f moveByInWorld = null;
+		switch (direction) {
+		case X_Minus:
+			moveByInWorld = new Vector3f(-1, 0, 0)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getXZValue());
+			break;
+		case X_Plus:
+			moveByInWorld = new Vector3f(1, 0, 0)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getXZValue());
+			break;
+		case Y_Minus:
+			moveByInWorld = new Vector3f(0, -1, 0)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getYValue());
+			break;
+		case Y_Plus:
+			moveByInWorld = new Vector3f(0, 1, 0)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getYValue());
+			break;
+		case Z_Minus:
+			moveByInWorld = new Vector3f(0, 0, -1)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getXZValue());
+			break;
+		case Z_Plus:
+			moveByInWorld = new Vector3f(0, 0, 1)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getXZValue());
+			break;
+
+		}
+
+		conn.moveBy(moveByInWorld);
+		connectivitySelectionManager.moveSelectedConnectivityBy(conn);
+		handleChangeConnTransform();
+	}
+
+	private void handleRotateSelectedConn(Vector3f rotationVector) {
+		if (connectivitySelectionManager.isEmpty())
+			return;
+
+		ConnectivityEditorUndoWrapper.getInstance().rotateSelectedDirectiveBy(
+				rotationVector);
+	}
+
+	@Override
+	public void keyReleased(KeyEvent event) {
+	}
+
+}

@@ -1,8 +1,6 @@
 package ConnectivityEditor.Window;
 
 import org.eclipse.swt.SWT;
-import org.eclipse.swt.events.KeyEvent;
-import org.eclipse.swt.events.KeyListener;
 import org.eclipse.swt.events.MouseEvent;
 import org.eclipse.swt.events.MouseListener;
 import org.eclipse.swt.graphics.Font;
@@ -20,23 +18,21 @@ import Connectivity.Ball;
 import Connectivity.CollisionBox;
 import Connectivity.Connectivity;
 import Connectivity.Fixed;
-import Connectivity.Gear;
 import Connectivity.Hinge;
 import Connectivity.Hole;
 import Connectivity.ICustom2DField;
 import Connectivity.MatrixItem;
-import Connectivity.Rail;
 import Connectivity.Slider;
 import ConnectivityEditor.Connectivity.AxleT;
 import ConnectivityEditor.Connectivity.FixedT;
 import ConnectivityEditor.ConnectivityControlGuide.ConnectivityMovementGuideRenderer;
 
-public class FileInfoTreeViewForConnectivityEditor implements Runnable {
+public class FileInfoTreeViewForConnectivityEditor_old implements Runnable {
 	private Tree fileInfoTreeComponent = null;
 	private ConnectivityEditor connectivityEditor = null;
 	private boolean isTerminate = false;
 
-	public FileInfoTreeViewForConnectivityEditor(ConnectivityEditor builder) {
+	public FileInfoTreeViewForConnectivityEditor_old(ConnectivityEditor builder) {
 
 		this.connectivityEditor = builder;
 		startUpdateViewThread();
@@ -118,7 +114,6 @@ public class FileInfoTreeViewForConnectivityEditor implements Runnable {
 
 			@Override
 			public void mouseUp(MouseEvent e) {
-
 			}
 
 			@Override
@@ -140,34 +135,9 @@ public class FileInfoTreeViewForConnectivityEditor implements Runnable {
 			}
 		});
 
-		fileInfoTreeComponent.addKeyListener(new KeyListener() {
-			@Override
-			public void keyPressed(KeyEvent arg0) {
-				System.out.println(arg0.keyCode);
-				switch (arg0.keyCode) {
-				case SWT.DEL:
-					for (TreeItem item : fileInfoTreeComponent.getSelection()) {
-						if (item.getData() instanceof CollisionBox) {
-							connectivityEditor.getWorkingPart()
-									.getCollisionBoxList()
-									.remove(item.getData());
-						} else {
-							connectivityEditor.getWorkingPart()
-									.getConnectivityList()
-									.remove(item.getData());
-						}
-					}
-					break;
-				case SWT.F5:
-					drawInfo();
-					break;
-				}
-			}
-
-			@Override
-			public void keyReleased(KeyEvent arg0) {
-			}
-		});
+		fileInfoTreeComponent
+				.addKeyListener(new ConnectivityEditorEventHandler(
+						ConnectivityEditor.getInstance()));
 	}
 
 	protected void handleItemSelection(TreeItem item) {
@@ -202,15 +172,15 @@ public class FileInfoTreeViewForConnectivityEditor implements Runnable {
 
 				}
 			// Collision
-			try{
-			if (connectivityEditor.getWorkingPart() != null
-					&& connectivityEditor.getWorkingPart()
-							.getCollisionBoxList() != null)
-				for (CollisionBox collisionBox : connectivityEditor
-						.getWorkingPart().getCollisionBoxList()) {
-					currentContents += collisionBox.toString();
-				}
-			}catch(Exception e){
+			try {
+				if (connectivityEditor.getWorkingPart() != null
+						&& connectivityEditor.getWorkingPart()
+								.getCollisionBoxList() != null)
+					for (CollisionBox collisionBox : connectivityEditor
+							.getWorkingPart().getCollisionBoxList()) {
+						currentContents += collisionBox.toString();
+					}
+			} catch (Exception e) {
 				e.printStackTrace();
 			}
 
@@ -245,23 +215,23 @@ public class FileInfoTreeViewForConnectivityEditor implements Runnable {
 				strBuilder.append("Hole: ");
 			else
 				strBuilder.append("Stud: ");
-			
+
 			strBuilder.append(" Size: ");
-			strBuilder.append(custom2d.getheight()/2);
+			strBuilder.append(custom2d.getheight() / 2);
 			strBuilder.append(",");
-			strBuilder.append(custom2d.getwidth()/2);
+			strBuilder.append(custom2d.getwidth() / 2);
 			strBuilder.append(" MatrixInfo: ");
 			MatrixItem[][] matrixItem = custom2d.getMatrixItem();
-			
+
 			for (int column = 0; column < custom2d.getheight() + 1; column++) {
 				for (int row = 0; row < custom2d.getwidth() + 1; row++) {
-					strBuilder.append(matrixItem[column][row].getAltitude() + ":"
-							+ matrixItem[column][row].getOccupiedArea() + ":"
-							+ matrixItem[column][row].getShape() + ",");
+					strBuilder.append(matrixItem[column][row].getAltitude()
+							+ ":" + matrixItem[column][row].getOccupiedArea()
+							+ ":" + matrixItem[column][row].getShape() + ",");
 				}
 				strBuilder.append("  ");
 			}
-			
+
 		} else if (conn instanceof Axle) {
 			strBuilder.append("Axle");
 			strBuilder.append(" Type: ");
@@ -296,17 +266,17 @@ public class FileInfoTreeViewForConnectivityEditor implements Runnable {
 			strBuilder.append("" + ((Slider) conn).getendCapped());
 			strBuilder.append(" Cylindrial: ");
 			strBuilder.append("" + ((Slider) conn).getcylindrical());
-			
-		}else if(conn instanceof Ball){
+
+		} else if (conn instanceof Ball) {
 			strBuilder.append("Ball");
 			strBuilder.append(" Type: ");
 			strBuilder.append("Ball_" + (conn.gettype() % 2 == 0 ? "f" : "m")
 					+ "_" + conn.gettype() / 2);
-		}else {
+		} else {
 			strBuilder.append(conn.getName());
 			strBuilder.append(" ");
 			strBuilder.append(conn.toString());
-		}		
+		}
 		return strBuilder.toString();
 	}
 }

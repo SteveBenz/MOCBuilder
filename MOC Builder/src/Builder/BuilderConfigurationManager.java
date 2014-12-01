@@ -457,7 +457,6 @@ public class BuilderConfigurationManager {
 	}
 
 	public void updateFile() {
-		System.out.println("UpdateFile");
 		writeToFile();
 	}
 

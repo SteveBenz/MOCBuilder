@@ -14,6 +14,8 @@ import Common.Box3;
 import Common.Ray3;
 import Common.Vector3f;
 import Connectivity.CollisionBox;
+import Connectivity.CollisionShape;
+import Connectivity.CollisionSphere;
 import Connectivity.Connectivity;
 import Connectivity.Hole;
 import Connectivity.IConnectivity;
@@ -22,6 +24,7 @@ import Connectivity.MatrixItem;
 import ConnectivityEditor.Window.ConnectivityEditor;
 import ConnectivityEditor.Window.DefaultConnectivityRenderer;
 import ConnectivityEditor.Window.IConnectivityRenderer;
+import ConnectivityEditor.Window.RightPanel;
 
 public class ConnectivityRendererForConnectivityEditor {
 	public MainCamera camera;
@@ -45,7 +48,8 @@ public class ConnectivityRendererForConnectivityEditor {
 
 		drawConnectivity(gl2);
 
-		drawCollisionBoxes(gl2);
+		if (RightPanel.isShowCollision)
+			drawCollisionShapes(gl2);
 
 		drawBoundingBoxes(gl2);
 
@@ -56,43 +60,6 @@ public class ConnectivityRendererForConnectivityEditor {
 		gl2.glPopMatrix();
 
 		gl2.glEnable(GL2.GL_LIGHTING);
-	}
-
-	public void drawCollisionBox(GL2 gl2, Vector3f[] pos) {
-
-		gl2.glBegin(GL2.GL_QUADS); // draw using triangles
-
-		gl2.glVertex3f(pos[0].x, pos[0].y, pos[0].z);
-		gl2.glVertex3f(pos[1].x, pos[1].y, pos[1].z);
-		gl2.glVertex3f(pos[2].x, pos[2].y, pos[2].z);
-		gl2.glVertex3f(pos[3].x, pos[3].y, pos[3].z);
-
-		gl2.glVertex3f(pos[7].x, pos[7].y, pos[7].z);
-		gl2.glVertex3f(pos[6].x, pos[6].y, pos[6].z);
-		gl2.glVertex3f(pos[5].x, pos[5].y, pos[5].z);
-		gl2.glVertex3f(pos[4].x, pos[4].y, pos[4].z);
-
-		gl2.glVertex3f(pos[0].x, pos[0].y, pos[0].z);
-		gl2.glVertex3f(pos[4].x, pos[4].y, pos[4].z);
-		gl2.glVertex3f(pos[5].x, pos[5].y, pos[5].z);
-		gl2.glVertex3f(pos[1].x, pos[1].y, pos[1].z);
-
-		gl2.glVertex3f(pos[6].x, pos[6].y, pos[6].z);
-		gl2.glVertex3f(pos[2].x, pos[2].y, pos[2].z);
-		gl2.glVertex3f(pos[1].x, pos[1].y, pos[1].z);
-		gl2.glVertex3f(pos[5].x, pos[5].y, pos[5].z);
-
-		gl2.glVertex3f(pos[6].x, pos[6].y, pos[6].z);
-		gl2.glVertex3f(pos[2].x, pos[2].y, pos[2].z);
-		gl2.glVertex3f(pos[3].x, pos[3].y, pos[3].z);
-		gl2.glVertex3f(pos[7].x, pos[7].y, pos[7].z);
-
-		gl2.glVertex3f(pos[7].x, pos[7].y, pos[7].z);
-		gl2.glVertex3f(pos[3].x, pos[3].y, pos[3].z);
-		gl2.glVertex3f(pos[0].x, pos[0].y, pos[0].z);
-		gl2.glVertex3f(pos[4].x, pos[4].y, pos[4].z);
-
-		gl2.glEnd();
 	}
 
 	private void drawBoundingBox(GL2 gl2, Vector3f[] pos) {
@@ -130,52 +97,19 @@ public class ConnectivityRendererForConnectivityEditor {
 		gl2.glEnd();
 	}
 
-	private void drawCollisionBoxes(GL2 gl2) {
-
+	private void drawCollisionShapes(GL2 gl2) {
 		gl2.glLoadMatrixf(camera.getModelView(), 0);
 
 		LDrawPart part = ConnectivityEditor.getInstance().getWorkingPart();
 		if (part == null)
 			return;
-		ArrayList<CollisionBox> boxes = part.getCollisionBoxList();
-		if (boxes == null || boxes.size() == 0)
+		ArrayList<CollisionShape> cShapes = part.getCollisionShapeList();
+		if (cShapes == null || cShapes.size() == 0)
 			return;
 
-		for (int j = 0; j < boxes.size(); j++) {
-			CollisionBox collisionBox = boxes.get(j);
-
-			if (collisionBox.isSelected()) {
-				gl2.glColor4d(0, 0, 0, 0.3f);
-			} else {
-				gl2.glColor4d(0, 1, 0, 0.3f);
-			}
-			Vector3f[] boxPos = new Vector3f[8];
-			boxPos[0] = new Vector3f(-collisionBox.getsX(),
-					-collisionBox.getsY(), -collisionBox.getsZ());
-			boxPos[1] = new Vector3f(collisionBox.getsX(),
-					-collisionBox.getsY(), -collisionBox.getsZ());
-			boxPos[2] = new Vector3f(collisionBox.getsX(),
-					-collisionBox.getsY(), collisionBox.getsZ());
-			boxPos[3] = new Vector3f(-collisionBox.getsX(),
-					-collisionBox.getsY(), collisionBox.getsZ());
-			boxPos[4] = new Vector3f(-collisionBox.getsX(),
-					collisionBox.getsY(), -collisionBox.getsZ());
-			boxPos[5] = new Vector3f(collisionBox.getsX(),
-					collisionBox.getsY(), -collisionBox.getsZ());
-			boxPos[6] = new Vector3f(collisionBox.getsX(),
-					collisionBox.getsY(), collisionBox.getsZ());
-			boxPos[7] = new Vector3f(-collisionBox.getsX(),
-					collisionBox.getsY(), collisionBox.getsZ());
-
-			for (int k = 0; k < 8; k++) {
-				boxPos[k] = collisionBox.getTransformMatrix().transformPoint(
-						boxPos[k]);
-				boxPos[k] = part.transformationMatrix().transformPoint(
-						boxPos[k]);
-			}
-			drawCollisionBox(gl2, boxPos);
+		for (CollisionShape shape : cShapes) {
+			drawConnectivity(gl2, shape);
 		}
-
 	}
 
 	private void drawBoundingBoxes(GL2 gl2) {
@@ -302,11 +236,12 @@ public class ConnectivityRendererForConnectivityEditor {
 		glu.gluDeleteQuadric(earth);
 	}
 
-	private float lastHittedDistance=-1;
-	
-	public float getLastHittedDistance(){
+	private float lastHittedDistance = -1;
+
+	public float getLastHittedDistance() {
 		return lastHittedDistance;
 	}
+
 	public IConnectivity getHittedConnectivity(MainCamera camera,
 			float screenX, float screenY) {
 
@@ -322,11 +257,15 @@ public class ConnectivityRendererForConnectivityEditor {
 		if (rendererMap == null)
 			return null;
 
-		for (Connectivity conn : part.getConnectivityList()) {
+		ArrayList<Connectivity> connList = new ArrayList<Connectivity>();
+		connList.addAll(part.getConnectivityList());
+		if (RightPanel.isShowCollision)
+			connList.addAll(part.getCollisionShapeList());
+		for (Connectivity conn : connList) {
 			if (rendererMap.containsKey(conn)) {
 				distanceTemp.put(0, Float.MAX_VALUE);
 				IConnectivityRenderer renderer = rendererMap.get(conn);
-				if (renderer.isHitted(camera, screenX, screenY, distanceTemp)){
+				if (renderer.isHitted(camera, screenX, screenY, distanceTemp)) {
 					if (distanceTemp.get(0) < distance.get(0)) {
 						hittedConn = renderer.getConnectivity();
 						distance.put(0, distanceTemp.get(0));
@@ -339,7 +278,6 @@ public class ConnectivityRendererForConnectivityEditor {
 	}
 
 	public Vector3f getHittedPos(MainCamera camera, float screenX, float screenY) {
-
 		FloatBuffer distance = FloatBuffer.allocate(1);
 		distance.put(0, Float.MAX_VALUE);
 		FloatBuffer distanceTemp = FloatBuffer.allocate(1);
@@ -352,8 +290,13 @@ public class ConnectivityRendererForConnectivityEditor {
 
 		if (rendererMap == null)
 			return null;
+
 		Ray3 ray = camera.getRay(screenX, screenY);
-		for (Connectivity conn : part.getConnectivityList())
+		ArrayList<Connectivity> connList = new ArrayList<Connectivity>();
+		connList.addAll(part.getConnectivityList());
+		if (RightPanel.isShowCollision)
+			connList.addAll(part.getCollisionShapeList());
+		for (Connectivity conn : connList) {
 			if (rendererMap.containsKey(conn)) {
 				IConnectivityRenderer renderer = rendererMap.get(conn);
 				if (renderer.isHitted(camera, screenX, screenY, distanceTemp)
@@ -363,6 +306,7 @@ public class ConnectivityRendererForConnectivityEditor {
 							ray.getDirection().scale(distance.get(0)));
 				}
 			}
+		}
 		return hitPos;
 	}
 }

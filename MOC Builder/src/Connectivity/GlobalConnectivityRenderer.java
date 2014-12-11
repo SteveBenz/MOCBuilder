@@ -6,6 +6,9 @@ import javax.media.opengl.GL2;
 import javax.media.opengl.glu.GLU;
 import javax.media.opengl.glu.GLUquadric;
 
+import com.bulletphysics.collision.dispatch.CollisionObject;
+import com.bulletphysics.linearmath.Transform;
+
 import Builder.MainCamera;
 import Command.LDrawPart;
 import Common.Box3;
@@ -87,13 +90,13 @@ public class GlobalConnectivityRenderer {
 		gl2.glPushMatrix();
 		gl2.glLoadMatrixf(camera.getModelView(), 0);
 
-		drawBoundingBoxForPartOfNoConnectivity(gl2);
+//		drawBoundingBoxForPartOfNoConnectivity(gl2);
 
-		drawConnectivity(gl2);
+//		drawConnectivity(gl2);
 
-		drawCollisionBoxes(gl2);
+		drawCollisionShapes(gl2);
 
-		drawBoundingBoxes(gl2);
+//		drawBoundingBoxes(gl2);
 
 		gl2.glMatrixMode(GL2.GL_MODELVIEW);
 		gl2.glPopMatrix();
@@ -248,51 +251,65 @@ public class GlobalConnectivityRenderer {
 		gl2.glEnd();
 	}
 
-	private void drawCollisionBoxes(GL2 gl2) {
+	private void drawCollisionShapes(GL2 gl2) {
 		GlobalConnectivityManager gcm = GlobalConnectivityManager.getInstance();
 		ArrayList<LDrawPart> partList = gcm.getPartList();
 
 		gl2.glLoadMatrixf(camera.getModelView(), 0);
 		for (int i = 0; i < partList.size(); i++) {
 			LDrawPart part = partList.get(i);
-//			ArrayList<CollisionBox> boxes = part.getCollisionBoxList(Matrix4
-//					.getIdentityMatrix4(), new Box3(new Vector3f(-100, -100,
-//					-100), new Vector3f(100, 100, 100)));
-			ArrayList<CollisionBox> boxes = part.getCollisionBoxList();
-			if (boxes == null || boxes.size() == 0)
+			ArrayList<CollisionShape> cShapes = part.getCollisionShapeList();
+			if (cShapes == null || cShapes.size() == 0)
 				continue;
 
-			for (int j = 0; j < boxes.size(); j++) {
-				CollisionBox collisionBox = boxes.get(j);
-
-				Vector3f[] boxPos = new Vector3f[8];
-				boxPos[0] = new Vector3f(-collisionBox.getsX(),
-						-collisionBox.getsY(), -collisionBox.getsZ());
-				boxPos[1] = new Vector3f(collisionBox.getsX(),
-						-collisionBox.getsY(), -collisionBox.getsZ());
-				boxPos[2] = new Vector3f(collisionBox.getsX(),
-						-collisionBox.getsY(), collisionBox.getsZ());
-				boxPos[3] = new Vector3f(-collisionBox.getsX(),
-						-collisionBox.getsY(), collisionBox.getsZ());
-				boxPos[4] = new Vector3f(-collisionBox.getsX(),
-						collisionBox.getsY(), -collisionBox.getsZ());
-				boxPos[5] = new Vector3f(collisionBox.getsX(),
-						collisionBox.getsY(), -collisionBox.getsZ());
-				boxPos[6] = new Vector3f(collisionBox.getsX(),
-						collisionBox.getsY(), collisionBox.getsZ());
-				boxPos[7] = new Vector3f(-collisionBox.getsX(),
-						collisionBox.getsY(), collisionBox.getsZ());
-
-				for (int k = 0; k < 8; k++) {
-					boxPos[k] = collisionBox.getTransformMatrix()
-							.transformPoint(boxPos[k]);
-					boxPos[k] = part.transformationMatrix().transformPoint(
-							boxPos[k]);
-				}
-				drawCollisionBox(gl2, boxPos);
+			for (CollisionShape shapes : cShapes) {
+				if (shapes instanceof CollisionBox)
+					drawCollisionBox(gl2, (CollisionBox) shapes);
 			}
-
 		}
+	}
+
+	private void drawCollisionBox(GL2 gl2, CollisionBox collisionBox) {
+
+		Vector3f[] boxPos = new Vector3f[8];
+		boxPos[0] = new Vector3f(-collisionBox.getsX(), -collisionBox.getsY(),
+				-collisionBox.getsZ());
+		boxPos[1] = new Vector3f(collisionBox.getsX(), -collisionBox.getsY(),
+				-collisionBox.getsZ());
+		boxPos[2] = new Vector3f(collisionBox.getsX(), -collisionBox.getsY(),
+				collisionBox.getsZ());
+		boxPos[3] = new Vector3f(-collisionBox.getsX(), -collisionBox.getsY(),
+				collisionBox.getsZ());
+		boxPos[4] = new Vector3f(-collisionBox.getsX(), collisionBox.getsY(),
+				-collisionBox.getsZ());
+		boxPos[5] = new Vector3f(collisionBox.getsX(), collisionBox.getsY(),
+				-collisionBox.getsZ());
+		boxPos[6] = new Vector3f(collisionBox.getsX(), collisionBox.getsY(),
+				collisionBox.getsZ());
+		boxPos[7] = new Vector3f(-collisionBox.getsX(), collisionBox.getsY(),
+				collisionBox.getsZ());
+
+//		for (int k = 0; k < 8; k++) {
+//			boxPos[k] = collisionBox.getTransformMatrix().transformPoint(
+//					boxPos[k]);
+//			boxPos[k] = collisionBox.getParent().transformationMatrix()
+//					.transformPoint(boxPos[k]);
+//		}
+		
+		for (int k = 0; k < 8; k++) {
+//			boxPos[k] = collisionBox.getTransformMatrix().transformPoint(
+//					boxPos[k]);
+//			boxPos[k] = collisionBox.getParent().transformationMatrix()
+//					.transformPoint(boxPos[k]);
+			CollisionObject co = collisionBox.getJBulletCollisionObject(collisionBox.getParent().transformationMatrix());
+			javax.vecmath.Vector3f temp = new javax.vecmath.Vector3f(boxPos[k].x, boxPos[k].y, boxPos[k].z);
+			Transform transform = new Transform();
+			co.getWorldTransform(transform);
+			transform.transform(temp);
+			boxPos[k] = new Vector3f(temp.x, temp.y, temp.z);
+		}
+		drawCollisionBox(gl2, boxPos);
+
 	}
 
 	private void drawBoundingBoxes(GL2 gl2) {

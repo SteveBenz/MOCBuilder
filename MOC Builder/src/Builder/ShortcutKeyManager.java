@@ -10,9 +10,9 @@ import java.util.Map.Entry;
 
 public class ShortcutKeyManager {
 	public enum ShortcutKeyT {
-		CancelSelection("Cancel Selection"), Save("Save"), Copy("Copy"), Cut(
-				"Cut"), Paste("Paste"), Undo("Undo"), Redo("Redo"), Delete(
-				"Delete"), MoveCamera("Move Camera Pos"), RotateX90C(
+		CloseWindow("Close Window"), CancelSelection("Cancel Selection"), Save(
+				"Save"), Copy("Copy"), Cut("Cut"), Paste("Paste"), Undo("Undo"), Redo(
+				"Redo"), Delete("Delete"), MoveCamera("Move Camera Pos"), RotateX90C(
 				"Rotate X 90' C"), RotateX90CC("Rotate X 90' CC"), RotateY90C(
 				"Rotate Y 90' C"), RotateY90CC("Rotate Y 90' CC"), RotateZ90C(
 				"Rotate Z 90' C"), RotateZ90CC("Rotate Z 90' CC"), RotateX45C(
@@ -54,10 +54,10 @@ public class ShortcutKeyManager {
 		// LSynth
 		LSynthAddCommand("LSynth-Add Command"), LSynthSynthesize(
 				"LSynth-Synthesize"),
-		//Comment
+		// Comment
 		CommentAdd("Add a New Comment")
-				
-				;
+
+		;
 
 		private String description;
 
@@ -121,6 +121,8 @@ public class ShortcutKeyManager {
 		keyMap.put(ShortcutKeyT.Redo, "Ctrl+Y");
 
 		keyMap.put(ShortcutKeyT.Delete, "Del");
+
+		keyMap.put(ShortcutKeyT.CloseWindow, "Ctrl+W");
 
 		keyMap.put(ShortcutKeyT.MoveCamera, "Space");
 
@@ -197,6 +199,8 @@ public class ShortcutKeyManager {
 		keyMap.put(ShortcutKeyT.Redo, "Shift+Command+Z");
 
 		keyMap.put(ShortcutKeyT.Delete, "BS");
+
+		keyMap.put(ShortcutKeyT.CloseWindow, "Command+W");
 
 		keyMap.put(ShortcutKeyT.MoveCamera, "Space");
 

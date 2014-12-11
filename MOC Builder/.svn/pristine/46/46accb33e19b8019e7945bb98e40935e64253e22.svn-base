@@ -1,0 +1,355 @@
+package ConnectivityEditor.Window;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.util.HashMap;
+import java.util.Map.Entry;
+
+import javax.media.opengl.GL2;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.widgets.Display;
+import org.eclipse.swt.widgets.FileDialog;
+import org.eclipse.swt.widgets.MessageBox;
+import org.eclipse.swt.widgets.Shell;
+
+import Builder.BuilderConfigurationManager;
+import Builder.DragSelectionInfoRenderer;
+import Builder.MainCamera;
+import Builder.MetaInfoRenderer;
+import Command.LDrawPart;
+import Common.Matrix4;
+import Common.Ray3;
+import Common.Size2;
+import Common.Vector3f;
+import Connectivity.CollisionBox;
+import Connectivity.CollisionShape;
+import Connectivity.Connectivity;
+import ConnectivityEditor.Connectivity.ConnectivityRendererForConnectivityEditor;
+import ConnectivityEditor.ConnectivityControlGuide.ConnectivityMovementGuideRenderer;
+import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoRedoManager;
+import LDraw.Files.LDrawFile;
+import LDraw.Support.ConnectivityLibrary;
+import LDraw.Support.LDrawDirective;
+import LDraw.Support.LDrawGLCameraScroller;
+import LDraw.Support.LDrawGLRenderer;
+import LDraw.Support.LDrawPaths;
+import LDraw.Support.LDrawUtilities;
+import Notification.ConnectivityModified;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+
+public class ConnectivityEditor {
+	public final static String APP_NAME = "Connectivity Editor";
+	private LDrawGLRenderer glRenderer;
+	private MetaInfoRenderer metaInfoRenderer;
+	private ConnectivityMovementGuideRenderer connectivityMovementGuideRenderer;
+	private ConnectivityRendererForConnectivityEditor connectivityRenderer;
+	private DragSelectionInfoRenderer connSelectionInfoRenderer;
+	private MainCamera camera;
+	private boolean isChanged;
+
+	private LDrawPart workingPart = null;
+
+	// private LDrawUndoRedoManager undoRedoManager;
+
+	private LDrawFile ldrawFile;
+
+	private static ConnectivityEditor connectivityEditor;
+
+	public static synchronized ConnectivityEditor getInstance() {
+		if (connectivityEditor == null) {
+			connectivityEditor = new ConnectivityEditor();
+		}
+		return connectivityEditor;
+	}
+
+	public static void main(String[] args) {
+		Display.setAppName(APP_NAME);
+		connectivityEditor = new ConnectivityEditor();
+
+		// ConnectivityEditorUI.getInstance("15071.dat");
+		// ConnectivityEditorUI.getInstance("61190b.dat");
+		// ConnectivityEditorUI.getInstance("3005.dat");
+		// ConnectivityEditorUI.getInstance("30130.dat");
+		ConnectivityEditorUI.getInstance("88811.dat");
+	}
+
+	long average = 0;
+
+	public ConnectivityEditor() {
+		newLDrawFile();
+		initRenderer();
+
+		camera.setDistanceBetweenObjectToCamera(400);
+	}
+
+	public ConnectivityMovementGuideRenderer getConnMovementGuideRenderer() {
+		return connectivityMovementGuideRenderer;
+	}
+
+	public DragSelectionInfoRenderer getConnSelectionInfoRenderer() {
+		return connSelectionInfoRenderer;
+	}
+
+	public MainCamera getCamera() {
+		return camera;
+	}
+
+	public ConnectivityRendererForConnectivityEditor getConnectivityRenderer() {
+		return this.connectivityRenderer;
+	}
+
+	public LDrawGLRenderer getGLRenderer() {
+		return glRenderer;
+	}
+
+	public Vector3f getHittedPos(float screenX, float screenY,
+			boolean ignoreSelectedParts) {
+		Ray3 ray = camera.getRay(screenX, screenY);
+		Matrix4 transform = new Matrix4();
+		transform.setIdentity();
+		HashMap<LDrawDirective, Float> hits = new HashMap<LDrawDirective, Float>();
+		ldrawFile.hitTest(ray, transform, null, hits);
+		float dist = 200000.0f;
+		Vector3f hitPos = null;
+		for (Entry<LDrawDirective, Float> entry : hits.entrySet()) {
+			LDrawPart part = (LDrawPart) entry.getKey();
+			Float distance = entry.getValue();
+			if (ignoreSelectedParts == true && part.isDraggingPart())
+				continue;
+			if (dist > distance.floatValue()) {
+				dist = distance.floatValue();
+				hitPos = ray.getOrigin()
+						.add(ray.getDirection().scale(distance));
+			}
+			// System.out.println("part " + part.displayName() + " distance"
+			// + distance +
+			// "Position: "+ray.getOrigin().add(ray.getDirection().scale(distance)));
+		}
+
+		if (hitPos == null)
+			return camera.screenToWorldXZ(screenX, screenY, 0);
+
+		return hitPos;
+	}
+
+	public MetaInfoRenderer getMetaInfoRenderer() {
+		return metaInfoRenderer;
+	}
+
+	public void initGLReleatedComponent(Size2 size, GL2 gl2) {
+		glRenderer.initWithBoundsCamera(size, camera);
+
+		LDrawGLCameraScroller scroller = new LDrawGLCameraScroller();
+		scroller.setDocumentSize(new Size2(800f, 600f));
+		glRenderer.setDelegate(null, scroller);
+		glRenderer.setLDrawDirective(ldrawFile);
+		glRenderer.prepareOpenGL(gl2);
+		glRenderer.setUseWireFrame(true);
+	}
+
+	private void initRenderer() {
+		camera = new MainCamera();
+		camera.setCurrentCameraRotation(new Vector3f((float) Math.PI, -0.52f, 0));
+
+		glRenderer = new LDrawGLRenderer();
+		metaInfoRenderer = new MetaInfoRenderer(null, camera);
+		metaInfoRenderer.setShowBaseplate(false);
+		connectivityMovementGuideRenderer = ConnectivityMovementGuideRenderer
+				.getInstance(camera);
+		connectivityRenderer = new ConnectivityRendererForConnectivityEditor(
+				camera);
+		connSelectionInfoRenderer = new DragSelectionInfoRenderer();
+	}
+
+	private void ldrawFileChanged() {
+		workingPart = null;
+		if (glRenderer == null || glRenderer.isReadyToUse() == false)
+			return;
+
+		if (glRenderer != null)
+			glRenderer.setLDrawDirective(ldrawFile);
+
+		camera.setDefault();
+
+		isChanged = false;
+
+		for (LDrawPart part : LDrawUtilities.extractLDrawPartListModel(
+				ldrawFile.activeModel(), false)) {
+			workingPart = part;
+			break;
+		}
+
+		connectivityMovementGuideRenderer.setConn(null);
+		ConnectivityEditorUndoRedoManager.getInstance().clear();
+	}
+
+	public void newLDrawFile() {
+		ldrawFile = LDrawFile.newEditableFile();
+		ldrawFile.activeModel().addStep();
+		ldrawFileChanged();
+	}
+
+	public void addConnectivity(Connectivity conn) {
+		if (workingPart == null)
+			return;
+		if (conn instanceof CollisionShape)
+			workingPart.getCollisionShapeList().add((CollisionShape) conn);
+		else
+			workingPart.getConnectivityList().add(conn);
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.ConnectivityDidAdded);
+	}
+
+	public void removeConnectivity(Connectivity conn) {
+		if (workingPart == null)
+			return;
+		if (conn instanceof CollisionShape)
+			workingPart.getCollisionShapeList().remove((CollisionShape) conn);
+		else
+			workingPart.getConnectivityList().remove(conn);
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.ConnectivityDidRemoved);
+	}
+
+	public void openFile(String path) {
+		if (path == null) {
+			FileDialog fileDialog = new FileDialog(Display.getDefault()
+					.getActiveShell(), SWT.OPEN);
+			fileDialog.setFilterPath(BuilderConfigurationManager.getInstance()
+					.getLDrawDirectory() + LDrawPaths.PARTS_DIRECTORY_NAME);
+			fileDialog
+					.setFilterExtensions(new String[] { "*.dat;*.conn", "*.*" });
+			path = fileDialog.open();
+			fileDialog.setFilterPath("");
+			if (path == null)
+				return;
+
+		}
+		newLDrawFile();
+		LDrawPart part = new LDrawPart();
+		path = new File(path).getName();
+		path = path.replace(".conn", ".dat");
+		part.initWithPartName(path, new Vector3f());
+		ldrawFile.activeModel().visibleStep().addDirective(part);
+		workingPart = part;
+		part.setSelected(true);
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.ConnectivityDidChanged);
+
+	}
+
+	public boolean saveAs(Shell shell, String filepath) {
+		if (workingPart == null)
+			return false;
+		if (shell != null && filepath == null) {
+			FileDialog fileDialog = new FileDialog(shell, SWT.SAVE);
+			fileDialog.setFilterExtensions(new String[] { "*.conn" });
+			fileDialog.setFileName(LDrawUtilities
+					.excludeExtensionFromPartName(workingPart.displayName()));
+			fileDialog.setFilterPath(ConnectivityLibrary.ConnectivityFilesPath);
+			filepath = fileDialog.open();
+			fileDialog.setFilterPath("");
+		}
+		if (filepath == null)
+			return false;
+		File file = new File(filepath);
+		if (shell != null && file.exists() == true) {
+			MessageBox messageBox = new MessageBox(shell, SWT.ICON_QUESTION
+					| SWT.YES | SWT.NO);
+			messageBox
+					.setMessage("Selected file is already exists. \r\n Do you want to overwrite it?");
+			if (messageBox.open() != SWT.YES) {
+				return false;
+			}
+		}
+
+		FileOutputStream fos;
+		try {
+			fos = new FileOutputStream(file);
+			if (workingPart != null)
+				for (Connectivity conn : workingPart.getConnectivityList()) {
+					fos.write(conn.toString().getBytes());
+					fos.write("\r\n".getBytes());
+				}
+			if (workingPart.getCollisionShapeList() != null)
+				for (CollisionShape collision : workingPart
+						.getCollisionShapeList()) {
+					fos.write(collision.toString().getBytes());
+					fos.write("\r\n".getBytes());
+				}
+			fos.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+			return false;
+		}
+
+		ConnectivityLibrary.getInstance().getConnectivity(
+				workingPart.displayName(), true, false);
+
+		workingPart.getCacheModel().notifyChanged();
+		// for (LDrawPart part : MOCBuilder.getInstance().getAllPartInFile()) {
+		// if (part.displayName().equals(workingPart.displayName()))
+		// part.getConnectivityList(true, false);
+		// }
+		// workingPart.getConnectivityList(true, false);
+		isChanged = false;
+		ConnectivityModified msg = new ConnectivityModified(workingPart);
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.ConnectivityListDidModified, msg);
+		return true;
+	}
+
+	public void saveFile() {
+		saveAs(null, ldrawFile.path());
+	}
+
+	public boolean checkChanged(Shell shell) {
+		if (isChanged) {
+			MessageBox box = new MessageBox(shell, SWT.YES | SWT.NO
+					| SWT.CANCEL | SWT.APPLICATION_MODAL | SWT.ICON_QUESTION);
+			box.setText("Your changes will be lost if you don't save");
+			box.setMessage("Do you want save?");
+			switch (box.open()) {
+			case SWT.YES:
+				return saveAs(shell, ldrawFile.path());
+			case SWT.NO:
+				return true;
+			case SWT.CANCEL:
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public LDrawPart getWorkingPart() {
+		return workingPart;
+	}
+
+	public void rotateSelectedConnectivity(Vector3f rotationVector) {
+		if (connectivityMovementGuideRenderer.getConn() != null) {
+			connectivityMovementGuideRenderer.getConn().rotateBy(
+					(float) Math.toRadians(rotationVector.length()),
+					rotationVector.scale(1 / rotationVector.length()));
+			ConnectivitySelectionManager.getInstance()
+					.moveSelectedConnectivityBy(
+							connectivityMovementGuideRenderer.getConn()
+									.getConnectivity());
+		} else if (ConnectivitySelectionManager.getInstance().isEmpty() == false) {
+			ConnectivitySelectionManager
+					.getInstance()
+					.getSelectedConnectivityList()
+					.get(0)
+					.rotateBy((float) Math.toRadians(rotationVector.length()),
+							rotationVector.scale(1 / rotationVector.length()));
+			ConnectivitySelectionManager.getInstance()
+					.moveSelectedConnectivityBy(
+							ConnectivitySelectionManager.getInstance()
+									.getSelectedConnectivityList().get(0));
+		}
+	}
+}

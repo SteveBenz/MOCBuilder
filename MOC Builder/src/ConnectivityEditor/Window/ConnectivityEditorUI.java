@@ -16,6 +16,8 @@ import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.FocusListener;
+import org.eclipse.swt.events.KeyEvent;
+import org.eclipse.swt.events.KeyListener;
 import org.eclipse.swt.events.ShellAdapter;
 import org.eclipse.swt.events.ShellEvent;
 import org.eclipse.swt.graphics.Point;
@@ -104,11 +106,12 @@ public class ConnectivityEditorUI implements GLEventListener {
 				}
 				super.shellClosed(event);
 			}
-			
+
 			@Override
 			public void shellActivated(ShellEvent arg0) {
-				if(MouseControlPanelDlg.getInstance()!=null)
-					MouseControlPanelDlg.getInstance().setforConnectivityEditor(true);
+				if (MouseControlPanelDlg.getInstance() != null)
+					MouseControlPanelDlg.getInstance()
+							.setforConnectivityEditor(true);
 			}
 		});
 		shell.setImage(ResourceManager.getInstance().getImage(display,
@@ -119,7 +122,6 @@ public class ConnectivityEditorUI implements GLEventListener {
 				animator.stop();
 			}
 		});
-
 
 		camera = connectivityEditor.getCamera();
 
@@ -169,8 +171,10 @@ public class ConnectivityEditorUI implements GLEventListener {
 		animator = new FPSAnimator(glcanvas, 30);
 		GlobalFocusManagerForConnectivityEditor.getInstance(glcanvas);
 
-		// FileInfoTreeView
-		connectivityFileInfoWindow = new ConnectivityFileInfoWindow(sashForm);
+		// right panel
+		Composite rightPanel = new RightPanel(sashForm, SWT.NONE);
+		GridData gridData = new GridData(GridData.FILL_BOTH);
+		rightPanel.setLayoutData(gridData);
 	}
 
 	@Override

@@ -12,10 +12,14 @@ import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 
 import Connectivity.Connectivity;
+import Connectivity.Hinge;
+import Connectivity.Slider;
 import ConnectivityEditor.Connectivity.ConnectivityGenerator;
 import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoWrapper;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
 
-public class HingeEditorComposite extends Composite {
+public class HingeEditorComposite extends ConnectivityEditorComposite {
 	private Label lblNewLabel;
 	private Combo combo_Type;
 
@@ -27,6 +31,16 @@ public class HingeEditorComposite extends Composite {
 	 */
 	public HingeEditorComposite(Composite parent, int style) {
 		super(parent, style);
+		init();
+	}
+
+	public HingeEditorComposite(Composite parent, int style, Connectivity conn) {
+		super(parent, style);
+		this.conn = conn;
+		init();
+	}
+
+	private void init() {
 		GridData gridData = new GridData(GridData.FILL_BOTH);
 		this.setLayoutData(gridData);
 		setLayout(new GridLayout());
@@ -64,11 +78,17 @@ public class HingeEditorComposite extends Composite {
 				handleGenerate();
 			}
 		});
-		btnGenerate.setText("Generate");
+		if (this.conn == null) {
+			btnGenerate.setText("Generate");
+		} else {
+			Hinge hinge = (Hinge) conn;
+			combo_Type.select(hinge.gettype() - 2);
+			btnGenerate.setText("Apply");
+		}
 		gridData = new GridData(GridData.CENTER, GridData.BEGINNING, true,
 				false);
-		 gridData.widthHint=96;
-		 gridData.heightHint=47;
+		gridData.widthHint = 96;
+		gridData.heightHint = 47;
 		btnGenerate.setLayoutData(gridData);
 	}
 
@@ -80,7 +100,18 @@ public class HingeEditorComposite extends Composite {
 				.generateHinge(type);
 		newItem.setParent(ConnectivityEditor.getInstance().getWorkingPart());
 
-		ConnectivityEditorUndoWrapper.getInstance().addConnectivity(newItem);
+		if (conn == null)
+			ConnectivityEditorUndoWrapper.getInstance()
+					.addConnectivity(newItem);
+		else {
+			Hinge newConn = (Hinge) newItem;
+			Hinge thisConn = (Hinge) conn;
+
+			thisConn.apply(newConn);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.ConnectivityDidChanged);
+		}
 	}
 
 	@Override

@@ -24,8 +24,10 @@ import Connectivity.MatrixItem;
 import ConnectivityEditor.Connectivity.ConnectivityGenerator;
 import ConnectivityEditor.Connectivity.StudT;
 import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoWrapper;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
 
-public class StudEditorComposite extends Composite {
+public class StudEditorComposite extends ConnectivityEditorComposite {
 	private Table table;
 	private Combo combo_nColumns;
 	private Combo combo_nRows;
@@ -38,6 +40,10 @@ public class StudEditorComposite extends Composite {
 	 */
 	public StudEditorComposite(Composite parent, int style) {
 		super(parent, SWT.NONE);
+		init();
+	}
+
+	private void init() {
 		RowLayout rowLayout = new RowLayout(SWT.VERTICAL);
 		rowLayout.center = true;
 		setLayout(rowLayout);
@@ -55,8 +61,6 @@ public class StudEditorComposite extends Composite {
 			}
 		});
 
-		
-
 		Label lblNewLabel = new Label(group, SWT.NONE);
 		lblNewLabel.setLocation(110, 10);
 		lblNewLabel.setSize(48, 15);
@@ -72,8 +76,6 @@ public class StudEditorComposite extends Composite {
 				generateTableContents();
 			}
 		});
-	
-		
 
 		Label lblColumn = new Label(group, SWT.NONE);
 		lblColumn.setBounds(10, 10, 73, 15);
@@ -84,14 +86,14 @@ public class StudEditorComposite extends Composite {
 
 		for (int i = 1; i < 20; i++)
 			combo_nRows.add("" + i);
-		
+
 		combo_nRows.select(0);
-		combo_nColumns.select(0);		
+		combo_nColumns.select(0);
 		combo_nRows.pack();
 		combo_nColumns.pack();
-		
+
 		group.pack();
-		
+
 		table = new Table(this, SWT.BORDER | SWT.FULL_SELECTION);
 		table.setHeaderVisible(false);
 		table.setLinesVisible(true);
@@ -104,9 +106,25 @@ public class StudEditorComposite extends Composite {
 				handleGenerateStud();
 			}
 		});
-		btnGenerate.setText("Generate");
+		if (this.conn == null) {
+			btnGenerate.setText("Generate");
+			generateTableContents();
+		} else {
+			combo_nColumns.select(((ICustom2DField) conn).getwidth() / 2 - 1);
+			combo_nRows.select(((ICustom2DField) conn).getheight() / 2 - 1);
 
-		generateTableContents();
+			combo_nColumns.setEnabled(false);
+			combo_nRows.setEnabled(false);
+
+			btnGenerate.setText("Apply");
+			generateTableContentsForModification();
+		}
+	}
+
+	public StudEditorComposite(Composite parent, int style, Connectivity conn) {
+		super(parent, SWT.NONE);
+		this.conn = conn;
+		init();
 	}
 
 	protected void handleGenerateStud() {
@@ -117,7 +135,8 @@ public class StudEditorComposite extends Composite {
 		for (int row = 0; row < nRows; row++) {
 			TableItem tableItem = table.getItem(row);
 			for (int column = 0; column < nColumns; column++) {
-				types[column][row] = StudT.valueOf(((CCombo) tableItem.getData("" + column)).getText());
+				types[column][row] = StudT.valueOf(((CCombo) tableItem
+						.getData("" + column)).getText());
 			}
 		}
 
@@ -131,8 +150,22 @@ public class StudEditorComposite extends Composite {
 				matrixItmes[column][row].setColumnIndex(column);
 				matrixItmes[column][row].setRowIndex(row);
 			}
+		if (conn == null)
+			ConnectivityEditorUndoWrapper.getInstance()
+					.addConnectivity(newStud);
+		else {
+			MatrixItem[][] existingMatrixItems = ((ICustom2DField) conn)
+					.getMatrixItem();
+			matrixItmes = ((ICustom2DField) newStud).getMatrixItem();
+			for (int column = 0; column < matrixItmes.length; column++)
+				for (int row = 0; row < matrixItmes[column].length; row++) {
+					existingMatrixItems[column][row]
+							.setAltitude(matrixItmes[column][row].getAltitude());
+				}
 
-		ConnectivityEditorUndoWrapper.getInstance().addConnectivity(newStud);
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.ConnectivityDidChanged);
+		}
 	}
 
 	private void generateTableContents() {
@@ -155,7 +188,55 @@ public class StudEditorComposite extends Composite {
 			final TableItem item = new TableItem(table, SWT.NULL);
 			for (int j = 0; j < nColumns; j++) {
 				CCombo combo = new CCombo(table, SWT.READ_ONLY);
-				for(StudT type : StudT.values())
+				for (StudT type : StudT.values())
+					combo.add(type.toString());
+				combo.select(0);
+				combo.pack();
+				TableEditor editor = new TableEditor(table);
+				editor.grabHorizontal = true;
+				editor.setEditor(combo, item, j);
+				item.setData("" + j, combo);
+			}
+			item.setData("nColumns", new Integer(nColumns));
+			item.addDisposeListener(new DisposeListener() {
+
+				@Override
+				public void widgetDisposed(DisposeEvent arg0) {
+					for (int i = 0; i < (Integer) (item.getData("nColumns")); i++) {
+						((CCombo) (item.getData("" + i))).dispose();
+					}
+				}
+			});
+		}
+		table.pack();
+		table.setRedraw(true);
+		table.setVisible(true);
+		table.redraw();
+		this.pack();
+		this.layout();
+	}
+
+	private void generateTableContentsForModification() {
+		table.setVisible(false);
+		table.setRedraw(false);
+
+		while (table.getColumnCount() > 0) {
+			table.getColumns()[0].dispose();
+		}
+		table.removeAll();
+
+		int nColumns = Integer.parseInt(combo_nColumns.getText());
+		int nRows = Integer.parseInt(combo_nRows.getText());
+
+		for (int j = 0; j < nColumns; j++) {
+			final TableColumn column = new TableColumn(table, SWT.NULL);
+			column.setWidth(80);
+		}
+		for (int i = 0; i < nRows; i++) {
+			final TableItem item = new TableItem(table, SWT.NULL);
+			for (int j = 0; j < nColumns; j++) {
+				CCombo combo = new CCombo(table, SWT.READ_ONLY);
+				for (StudT type : StudT.values())
 					combo.add(type.toString());
 				combo.select(0);
 				combo.pack();

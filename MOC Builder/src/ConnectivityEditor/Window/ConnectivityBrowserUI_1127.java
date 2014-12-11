@@ -5,14 +5,14 @@ import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.events.SelectionListener;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
+import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Display;
-import org.eclipse.swt.widgets.List;
 import org.eclipse.swt.widgets.Shell;
 
 public class ConnectivityBrowserUI_1127 {
-	List list;
+	Combo connectivityType;
 	Display display;
 	Shell shell;
 	Composite mainComposite;
@@ -33,24 +33,27 @@ public class ConnectivityBrowserUI_1127 {
 		GridData gridData = new GridData(GridData.FILL_BOTH);
 		mainComposite.setLayoutData(gridData);
 
-		GridLayout gridLayout = new GridLayout(2, false);
+		GridLayout gridLayout = new GridLayout(1, false);
 		mainComposite.setLayout(gridLayout);
 
-		list = new List(mainComposite, SWT.BORDER);
-		gridData = new GridData(GridData.BEGINNING, GridData.FILL, false, true);
-		list.setLayoutData(gridData);
-		generateList(list);
-		list.addSelectionListener(new SelectionListener() {
+		connectivityType = new Combo(mainComposite, SWT.READ_ONLY);
+		gridData = new GridData(GridData.BEGINNING, GridData.BEGINNING, false, false);
+		gridData.heightHint=20;
+		connectivityType.setLayoutData(gridData);
+		generateList(connectivityType);
+		connectivityType.addSelectionListener(new SelectionListener() {
 			@Override
 			public void widgetSelected(SelectionEvent arg0) {
-				if(detailComposite!=null && detailComposite.isDisposed()==false){
-					for(Control control :detailComposite.getChildren())
+				if (detailComposite != null
+						&& detailComposite.isDisposed() == false) {
+					for (Control control : detailComposite.getChildren())
 						control.dispose();
 					detailComposite.dispose();
 				}
 				mainComposite.layout();
 				detailComposite = new Composite(mainComposite, SWT.BORDER);
-				GridData gridData = new GridData(GridData.FILL, GridData.FILL, true, true);
+				GridData gridData = new GridData(GridData.FILL, GridData.FILL,
+						true, true);
 				detailComposite.setLayoutData(gridData);
 				detailComposite.setLayout(new GridLayout());
 				updateDetailView(detailComposite);
@@ -70,20 +73,22 @@ public class ConnectivityBrowserUI_1127 {
 		updateDetailView(detailComposite);
 	}
 
-	private void generateList(List list) {
+	private void generateList(Combo combo) {
 		String[] category = new String[] { "Stud", "Hole", "Axle", "Slider",
 				"Hinge", "Ball", "Fixed"};
 		for (String str : category)
-			list.add(str);
-		list.add("CollisionBox");
-		list.select(0);
+			combo.add(str);
+		combo.add("CollisionBox");
+		combo.add("CollisionSphere");
+		combo.add("CollisionCylinder");
+		combo.select(0);
 	}
 
 
 	private void updateDetailView(Composite parent) {
 		Composite unit=null;
 		parent.setVisible(false);
-		switch (list.getSelectionIndex()) {
+		switch (connectivityType.getSelectionIndex()) {
 		case 0:
 			unit = new StudEditorComposite(parent, SWT.NONE);
 			break;
@@ -106,7 +111,13 @@ public class ConnectivityBrowserUI_1127 {
 			unit = new FixedEditorComposite(parent, SWT.NONE);
 			break;
 		case 7:
-			unit = new CollisionEditorComposite(parent, SWT.NONE);
+			unit = new CollisionBoxEditorComposite(parent, SWT.NONE);
+			break;
+		case 8:
+			unit = new CollisionSphereEditorComposite(parent, SWT.NONE);
+			break;
+		case 9:
+			unit = new CollisionCylinderEditorComposite(parent, SWT.NONE);
 			break;
 		}
 		parent.setVisible(true);

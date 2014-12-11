@@ -10,7 +10,7 @@ import LDraw.Support.type.LDrawGridTypeT;
 
 public abstract class Connectivity implements Cloneable, IConnectivity {
 	public static enum TYPE {
-		Axle, Ball, Hole, Stud, Fixed, Gear, Hinge, Rail, Slider, CollisionBox, BoundingAABB, Comment, Import
+		Axle, Ball, Hole, Stud, Fixed, Gear, Hinge, Rail, Slider, CollisionBox, BoundingAABB, Comment, Import, CollisionSphere, CollisionCylinder
 	}
 
 	protected Matrix4 transformMatrix = Matrix4.getIdentityMatrix4();

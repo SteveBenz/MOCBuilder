@@ -1,0 +1,350 @@
+package LDraw.Support;
+
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FilenameFilter;
+import java.util.ArrayList;
+import java.util.HashMap;
+
+import Builder.BuilderConfigurationManager;
+import Connectivity.Axle;
+import Connectivity.Ball;
+import Connectivity.BoundingAABB;
+import Connectivity.CollisionBox;
+import Connectivity.CollisionCylinder;
+import Connectivity.CollisionShape;
+import Connectivity.CollisionSphere;
+import Connectivity.Connectivity;
+import Connectivity.Connectivity.TYPE;
+import Connectivity.Custom2dFieldGenerator;
+import Connectivity.Fixed;
+import Connectivity.Gear;
+import Connectivity.Hinge;
+import Connectivity.Hole;
+import Connectivity.Rail;
+import Connectivity.Slider;
+import Connectivity.Stud;
+import ConnectivityEditor.Window.CollisionShapeGenerator;
+
+public class ConnectivityLibrary {
+
+	public static void main(String args[]) {
+		ConnectivityLibrary lib = ConnectivityLibrary.getInstance();
+
+		ArrayList<String> testList = new ArrayList<String>();
+		testList.add("4162p0u");
+		for (String partName : testList) {
+			lib.getConnectivity(partName + ".dat", false, true);
+		}
+	}
+
+	public final static String ConnectivityFilesPath = BuilderConfigurationManager
+			.getDefaultDataDirectoryPath() + "Connectivity" + File.separator;
+
+	HashMap<String, ArrayList<Connectivity>> connectivityCache;
+	HashMap<String, ArrayList<CollisionShape>> collisionShapeCache;
+	HashMap<String, ArrayList<BoundingAABB>> boundingAABBCache;
+
+	private static ConnectivityLibrary _instance = null;
+
+	private ConnectivityLibrary() {
+		connectivityCache = new HashMap<String, ArrayList<Connectivity>>();
+		collisionShapeCache = new HashMap<String, ArrayList<CollisionShape>>();
+		boundingAABBCache = new HashMap<String, ArrayList<BoundingAABB>>();
+		// loadAllConnectivity();
+	}
+
+	public synchronized static ConnectivityLibrary getInstance() {
+		if (_instance == null)
+			_instance = new ConnectivityLibrary();
+		return _instance;
+	}
+
+	public boolean hasConnectivity(String partName) {
+		String partNameWithoutExtension = LDrawUtilities
+				.excludeExtensionFromPartName(partName);
+
+		if (connectivityCache.containsKey(partNameWithoutExtension))
+			return true;
+
+		File cache = new File(ConnectivityFilesPath
+				+ LDrawUtilities.excludeExtensionFromPartName(partName)
+				+ ".conn");
+		if (cache.exists())
+			return true;
+
+		return false;
+	}
+
+	public HashMap<String, ArrayList<Connectivity>> getConnectivity() {
+		return connectivityCache;
+	}
+
+	public ArrayList<Connectivity> getConnectivity(String partName) {
+		return getConnectivity(partName, true, true);
+	}
+
+	public ArrayList<Connectivity> getConnectivity(String partName,
+			boolean useConnExtractor, boolean useCache) {
+		String partNameWithoutExtension = LDrawUtilities
+				.excludeExtensionFromPartName(partName);
+		String representPartNameWithoutExtension = LDrawUtilities
+				.excludeExtensionFromPartName(PartCache.getInstance()
+						.getRepresentPartName(partName));
+		ArrayList<Connectivity> original = null;
+		ArrayList<Connectivity> copy = new ArrayList<Connectivity>();
+
+		if (useCache == false) {
+			connectivityCache.remove(partNameWithoutExtension);
+			collisionShapeCache.remove(partNameWithoutExtension);
+			boundingAABBCache.remove(partNameWithoutExtension);
+		}
+
+		if (connectivityCache.containsKey(partNameWithoutExtension))
+			original = connectivityCache.get(partNameWithoutExtension);
+
+		if (original == null)
+			if (loadConnectivity(partNameWithoutExtension,
+					partNameWithoutExtension))
+				original = connectivityCache.get(partNameWithoutExtension);
+		if (original == null
+				&& representPartNameWithoutExtension
+						.equals(partNameWithoutExtension) == false) {
+			if (loadConnectivity(representPartNameWithoutExtension,
+					representPartNameWithoutExtension))
+				original = connectivityCache
+						.get(representPartNameWithoutExtension);
+		}
+		// test
+		if (original == null) {
+			// only apply for part name start with numbers.
+			String candidatePartName = LDrawUtilities
+					.excludePatternWithoutExtension(partNameWithoutExtension);
+
+			if (candidatePartName != null && candidatePartName != "") {
+				if (loadConnectivity(candidatePartName,
+						partNameWithoutExtension)) {
+					original = connectivityCache.get(partNameWithoutExtension);
+				}
+			}
+		}
+
+		if (useConnExtractor == true && original == null
+				&& collisionShapeCache.containsKey(partName) == false) {
+			long t = System.currentTimeMillis();
+			Custom2dFieldGenerator.getInstance().getStudInfo(partName);
+			Custom2dFieldGenerator.getInstance().getHoleInfo(partName);
+			if (loadConnectivity(partNameWithoutExtension,
+					partNameWithoutExtension))
+				original = connectivityCache.get(partNameWithoutExtension);
+			else
+				connectivityCache.put(partNameWithoutExtension,
+						new ArrayList<Connectivity>());
+			Custom2dFieldGenerator.getInstance().deleteConnFile(partName);
+			System.out.println("Generating Conn Info for " + partName
+					+ " requires " + (System.currentTimeMillis() - t) + "ms");
+		}
+
+		if (useConnExtractor
+				&& (collisionShapeCache.containsKey(partNameWithoutExtension) == false || collisionShapeCache
+						.get(partNameWithoutExtension).size() == 0))
+			collisionShapeCache.put(partNameWithoutExtension,
+					CollisionShapeGenerator.getInstance()
+							.generateCollisionShape(partName));
+
+		if (original == null)
+			return new ArrayList<Connectivity>();
+
+		for (Connectivity conn : original) {
+			Connectivity conn_copy = null;
+			try {
+				if (Stud.class.isInstance(conn)) {
+					conn_copy = (Stud) ((Stud) conn).clone();
+				} else if (Hole.class.isInstance(conn)) {
+					conn_copy = (Hole) ((Hole) conn).clone();
+				} else {
+					conn_copy = (Connectivity) conn.clone();
+				}
+				copy.add(conn_copy);
+			} catch (CloneNotSupportedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		return copy;
+	}
+
+	public ArrayList<CollisionShape> getCollisionShape(String key) {
+		return getCollisionShape(key, true);
+	}
+
+	public ArrayList<CollisionShape> getCollisionShape(String partName,
+			boolean useCache) {
+		ArrayList<CollisionShape> retList = new ArrayList<CollisionShape>();
+
+		String partNameWithoutExtension = LDrawUtilities
+				.excludeExtensionFromPartName(partName);
+
+		if (useCache == false)
+			getConnectivity(partName, true, false);
+
+		if (collisionShapeCache.containsKey(partNameWithoutExtension))
+			for (CollisionShape cShape : collisionShapeCache
+					.get(partNameWithoutExtension)) {
+				try {
+					retList.add((CollisionShape) cShape.clone());
+				} catch (CloneNotSupportedException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+
+		return retList;
+	}
+
+	public ArrayList<BoundingAABB> getBoundingAABB(String key) {
+		String partNameWithoutExtension = LDrawUtilities
+				.excludeExtensionFromPartName(key);
+		if (boundingAABBCache.containsKey(partNameWithoutExtension))
+			return boundingAABBCache.get(partNameWithoutExtension);
+		return null;
+	}
+
+	private boolean loadConnectivity(String partName, String originalPartName) {
+		File cache = new File(ConnectivityFilesPath
+				+ LDrawUtilities.excludeExtensionFromPartName(partName)
+				+ ".conn");
+		if (!cache.exists()) {
+			return false;
+		}
+
+		BufferedReader reader = null;
+		String line = null, lines[];
+		String partNameWithoutExtension = LDrawUtilities
+				.excludeExtensionFromPartName(originalPartName);
+		ArrayList<Connectivity> connectivities;
+		ArrayList<CollisionShape> collisionShapes;
+		ArrayList<BoundingAABB> boundingAABBs;
+		Connectivity connectivity = null;
+		try {
+			reader = new BufferedReader(new FileReader(cache));
+			TYPE[] types = TYPE.values();
+			while ((line = reader.readLine()) != null) {
+				if ("".equals(line))
+					continue;
+				lines = line.split(" ");
+				connectivity = null;
+				switch (types[Integer.parseInt(lines[0])]) {
+				case Comment:
+					continue;
+
+				case Import:
+					return loadConnectivity(lines[1], originalPartName);
+				case Axle:
+					connectivity = new Axle();
+					break;
+				case Ball:
+					connectivity = new Ball();
+					break;
+				case Fixed:
+					connectivity = new Fixed();
+					break;
+				case Gear:
+					connectivity = new Gear();
+					break;
+				case Hinge:
+					connectivity = new Hinge();
+					break;
+				case Hole:
+					connectivity = new Hole();
+					break;
+				case Rail:
+					connectivity = new Rail();
+					break;
+				case Slider:
+					connectivity = new Slider();
+					break;
+				case Stud:
+					connectivity = new Stud();
+					break;
+				case CollisionBox:
+					connectivity = new CollisionBox();
+					break;
+				case CollisionSphere:
+					connectivity = new CollisionSphere();
+					break;
+				case CollisionCylinder:
+					connectivity = new CollisionCylinder();
+					break;
+				case BoundingAABB:
+					connectivity = new BoundingAABB();
+					break;
+				}
+				if(connectivity==null)continue;
+
+				connectivity.parseString(lines);
+
+				if (connectivity instanceof CollisionShape) {
+					collisionShapes = collisionShapeCache
+							.get(partNameWithoutExtension);
+					if (collisionShapes == null) {
+						collisionShapes = new ArrayList<CollisionShape>();
+						collisionShapeCache.put(partNameWithoutExtension,
+								collisionShapes);
+					}
+					collisionShapes.add((CollisionShape) connectivity);
+				} else if (connectivity instanceof BoundingAABB) {
+					boundingAABBs = boundingAABBCache
+							.get(partNameWithoutExtension);
+					if (boundingAABBs == null) {
+						boundingAABBs = new ArrayList<BoundingAABB>();
+						boundingAABBCache.put(partNameWithoutExtension,
+								boundingAABBs);
+					}
+					boundingAABBs.add((BoundingAABB) connectivity);
+				} else {
+					connectivities = connectivityCache
+							.get(partNameWithoutExtension);
+					if (connectivities == null) {
+						connectivities = new ArrayList<Connectivity>();
+						connectivityCache.put(partNameWithoutExtension,
+								connectivities);
+					}
+					connectivities.add(connectivity);
+				}
+			}
+			reader.close();
+		} catch (Exception e) {
+			System.out.println(partName);
+			System.out.println(line);
+			e.printStackTrace();
+		}
+		return true;
+	}
+
+	public ArrayList<String> getAllConnectiblePartIdList() {
+		ArrayList<String> retList = new ArrayList<String>();
+
+		File connectivities = new File("./Resource/connectivity");
+		File[] lists = connectivities.listFiles(new FilenameFilter() {
+			@Override
+			public boolean accept(File dir, String name) {
+				return name.endsWith("conn");
+			}
+		});
+
+		for (File file : lists) {
+			retList.add(LDrawUtilities.excludeExtensionFromPartName(file
+					.getName()));
+
+		}
+		return retList;
+	}
+
+	public void loadAllConnectivity() {
+		for (String partName : getAllConnectiblePartIdList()) {
+			getConnectivity(partName + ".dat", false, true);
+		}
+	}
+}

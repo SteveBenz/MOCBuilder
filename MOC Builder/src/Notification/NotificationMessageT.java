@@ -13,6 +13,6 @@ public enum NotificationMessageT {
 	CopyNPasteManagerUpdated, 
 	MouseControlModeChanged,
 	
-	ConnectivityDidAdded, ConnectivityDidRemoved, ConnectivityDidChanged,
+	ConnectivityDidAdded, ConnectivityDidRemoved, ConnectivityDidChanged,ConnectivityDidSelected
 	;
 }

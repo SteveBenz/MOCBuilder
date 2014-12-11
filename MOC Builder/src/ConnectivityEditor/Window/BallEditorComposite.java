@@ -5,19 +5,21 @@ import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
-import org.eclipse.swt.layout.RowData;
-import org.eclipse.swt.layout.RowLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 
+import Connectivity.Ball;
 import Connectivity.Connectivity;
+import Connectivity.Slider;
 import ConnectivityEditor.Connectivity.ConnectivityGenerator;
 import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoWrapper;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
 
-public class BallEditorComposite extends Composite {
+public class BallEditorComposite extends ConnectivityEditorComposite {
 	private Label lblNewLabel;
 	private Combo combo_Type;
 
@@ -29,6 +31,16 @@ public class BallEditorComposite extends Composite {
 	 */
 	public BallEditorComposite(Composite parent, int style) {
 		super(parent, style);
+		init();
+	}
+
+	public BallEditorComposite(Composite parent, int style, Connectivity conn) {
+		super(parent, style);
+		this.conn = conn;
+		init();
+	}
+
+	private void init() {
 		GridData gridData = new GridData(GridData.FILL_BOTH);
 		this.setLayoutData(gridData);
 		setLayout(new GridLayout());
@@ -45,7 +57,7 @@ public class BallEditorComposite extends Composite {
 		lblNewLabel.setLayoutData(gridData);
 
 		combo_Type = new Combo(group, SWT.READ_ONLY);
-//		combo_Type.setBounds(69, 17, 88, 23);
+		// combo_Type.setBounds(69, 17, 88, 23);
 
 		for (int i = 1; i < 11; i++) {
 			combo_Type.add("Ball_" + i + "_f");
@@ -67,11 +79,17 @@ public class BallEditorComposite extends Composite {
 				handleGenerate();
 			}
 		});
-		btnGenerate.setText("Generate");
+		if (this.conn == null) {
+			btnGenerate.setText("Generate");
+		} else {
+			Ball ball = (Ball) conn;
+			combo_Type.select(ball.gettype() - 2);
+			btnGenerate.setText("Apply");
+		}
 		gridData = new GridData(GridData.CENTER, GridData.BEGINNING, true,
 				false);
-		 gridData.widthHint=96;
-		 gridData.heightHint=47;
+		gridData.widthHint = 96;
+		gridData.heightHint = 47;
 		btnGenerate.setLayoutData(gridData);
 	}
 
@@ -83,7 +101,18 @@ public class BallEditorComposite extends Composite {
 				.generateBall(type);
 		newItem.setParent(ConnectivityEditor.getInstance().getWorkingPart());
 
-		ConnectivityEditorUndoWrapper.getInstance().addConnectivity(newItem);
+		if (conn == null)
+			ConnectivityEditorUndoWrapper.getInstance()
+					.addConnectivity(newItem);
+		else {
+			Ball newConn = (Ball) newItem;
+			Ball thisConn = (Ball) conn;
+
+			thisConn.apply(newConn);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.ConnectivityDidChanged);
+		}
 	}
 
 	@Override

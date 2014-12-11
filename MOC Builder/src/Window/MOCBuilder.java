@@ -983,7 +983,6 @@ public class MOCBuilder {
 	}
 
 	public boolean checkChanged(Shell shell) {
-		System.out.println(isChanged);
 		if (isChanged) {
 			MessageBox box = new MessageBox(shell, SWT.YES | SWT.NO
 					| SWT.CANCEL | SWT.APPLICATION_MODAL | SWT.ICON_QUESTION);

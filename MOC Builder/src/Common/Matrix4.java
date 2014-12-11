@@ -308,9 +308,11 @@ public class Matrix4 {
 		float cosAngle = (float) Math.cos(angle);
 		float sinAngle = (float) Math.sin(angle);
 
-		if(Float.isNaN(cosAngle) || Float.isInfinite(cosAngle))cosAngle=0;
-		if(Float.isNaN(sinAngle) || Float.isInfinite(sinAngle))sinAngle=1;
-		
+		if (Float.isNaN(cosAngle) || Float.isInfinite(cosAngle))
+			cosAngle = 0;
+		if (Float.isNaN(sinAngle) || Float.isInfinite(sinAngle))
+			sinAngle = 1;
+
 		rotationMatrix.setElement(1, 1, cosAngle);
 		rotationMatrix.setElement(1, 2, sinAngle);
 		rotationMatrix.setElement(2, 1, -sinAngle);
@@ -325,9 +327,11 @@ public class Matrix4 {
 		float cosAngle = (float) Math.cos(angle);
 		float sinAngle = (float) Math.sin(angle);
 
-		if(Float.isNaN(cosAngle) || Float.isInfinite(cosAngle))cosAngle=0;
-		if(Float.isNaN(sinAngle) || Float.isInfinite(sinAngle))sinAngle=1;
-		
+		if (Float.isNaN(cosAngle) || Float.isInfinite(cosAngle))
+			cosAngle = 0;
+		if (Float.isNaN(sinAngle) || Float.isInfinite(sinAngle))
+			sinAngle = 1;
+
 		rotationMatrix.setElement(0, 0, cosAngle);
 		rotationMatrix.setElement(0, 2, -sinAngle);
 		rotationMatrix.setElement(2, 0, sinAngle);
@@ -1000,14 +1004,34 @@ public class Matrix4 {
 		return retValue;
 	}
 
-	public float getDifferentValueForRotation(Matrix4 initialMatrix) {		
+	public float getDifferentValueForRotation(Matrix4 initialMatrix) {
 		float value = 0;
 		Vector3f unitVectors[] = new Vector3f[] { new Vector3f(1, 0, 0),
 				new Vector3f(0, 1, 0), new Vector3f(0, 0, 1) };
-		
+
 		for (int i = 0; i < 3; i++)
-			value += MatrixMath.V3RotateByTransformMatrix(unitVectors[i], initialMatrix).sub(MatrixMath.V3RotateByTransformMatrix(unitVectors[i], this))
-					.length();
+			value += MatrixMath
+					.V3RotateByTransformMatrix(unitVectors[i], initialMatrix)
+					.sub(MatrixMath.V3RotateByTransformMatrix(unitVectors[i],
+							this)).length();
 		return value;
+	}
+
+	public static Matrix4 multiplyForRotation(Matrix4 partTransformMatrix,
+			Matrix4 transformMatrix) {
+		Matrix4 product = new Matrix4();
+		for (int i = 0; i < 4; i++) 
+			for (int j = 0; j < 4; j++)
+				product.element[i][j]=0;
+		
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				product.element[i][j] = 0.0f;
+				for (int k = 0; k < 3; k++)
+					product.element[i][j] += partTransformMatrix.element[i][k]
+							* transformMatrix.element[k][j];
+			}
+		}
+		return product;
 	}
 }

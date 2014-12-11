@@ -12,6 +12,8 @@ import Connectivity.Connectivity;
 import Connectivity.ICustom2DField;
 import Connectivity.MatrixItem;
 import ConnectivityEditor.ConnectivityControlGuide.ConnectivityMovementGuideRenderer;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
 import Window.MOCBuilder;
 
 public class ConnectivitySelectionManager {
@@ -45,6 +47,7 @@ public class ConnectivitySelectionManager {
 		}
 		if (updateProjectionMap)
 			updateScreenProjectionVerticesMap(conn);
+
 	}
 
 	public void addConnectivityToSelection(Connectivity conn) {
@@ -64,6 +67,9 @@ public class ConnectivitySelectionManager {
 				}
 			}
 		}
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.ConnectivityDidSelected);
 	}
 
 	public void clearAllPart(boolean updateConnectivity) {
@@ -94,6 +100,9 @@ public class ConnectivitySelectionManager {
 
 		ConnectivityMovementGuideRenderer.getInstance().setConn(null);
 		updateScreenProjectionVerticesMapAll();
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.ConnectivityDidSelected);
 	}
 
 	public boolean containsInSelection(Connectivity conn) {
@@ -189,7 +198,8 @@ public class ConnectivitySelectionManager {
 				}
 			}
 		}
-
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.ConnectivityDidSelected);
 	}
 
 	public void selectByDragging(Box2 bounds) {

@@ -20,7 +20,7 @@ public class GlobalFocusManagerForConnectivityEditor {
 	}
 	
 	public void forceFocusToMainView(){
-		if(mainView!=null){
+		if(mainView!=null && mainView.isDisposed()==false){
 			mainView.getDisplay().asyncExec(new Runnable(){
 
 				@Override

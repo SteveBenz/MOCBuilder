@@ -14,6 +14,10 @@ public class Hinge extends Connectivity {
 	int oriented;
 	String tag;
 
+	public void apply(Hinge newConn) {
+		this.type = newConn.gettype();
+	}
+	
 	public float getFlipLimMax() {
 		return FlipLimMax;
 	}
@@ -184,4 +188,6 @@ public class Hinge extends Connectivity {
 		// System.out.println("Rotation Vector: "+rotationVector);
 		return rotationVector;
 	}
+
+
 }

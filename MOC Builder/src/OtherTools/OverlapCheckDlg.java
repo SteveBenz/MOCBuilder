@@ -105,12 +105,12 @@ public class OverlapCheckDlg extends Dialog implements ILDrawSubscriber {
 				for (LDrawPart part : partList) {
 					boolean isOverlapped = false;
 
-					if (part.getCollisionBoxList() == null
-							|| part.getCollisionBoxList().size() == 0)
+					if (part.getCollisionShapeList() == null
+							|| part.getCollisionShapeList().size() == 0)
 						isOverlapped = true;
 					else
 						isOverlapped = GlobalConnectivityManager.getInstance()
-								.CheckCollisionBox(part,
+								.checkCollision(part,
 										part.transformationMatrix());
 					if (isOverlapped)
 						part.setHidden(false);
@@ -123,7 +123,7 @@ public class OverlapCheckDlg extends Dialog implements ILDrawSubscriber {
 		});
 		btnNewButton.setBounds(10, 2, 180, 28);
 		btnNewButton.setText("Show Overlapping Parts");
-		
+
 		btnShowAll = new Button(shlOverlapCheck, SWT.NONE);
 		btnShowAll.addSelectionListener(new SelectionAdapter() {
 			@Override
@@ -174,13 +174,12 @@ public class OverlapCheckDlg extends Dialog implements ILDrawSubscriber {
 						part.displayName()).toLowerCase();
 				LDrawColorT colorCode = part.getLDrawColor().getColorCode();
 				Boolean isOverlapped = false;
-				if (part.getCollisionBoxList() == null
-						|| part.getCollisionBoxList().size() == 0)
+				if (part.getCollisionShapeList() == null
+						|| part.getCollisionShapeList().size() == 0)
 					isOverlapped = null;
 				else
 					isOverlapped = GlobalConnectivityManager.getInstance()
-							.CheckCollisionBox(part,
-									part.transformationMatrix());
+							.checkCollision(part, part.transformationMatrix());
 
 				if (btnCheck_onlyShowOverlapped.getSelection()
 						&& (isOverlapped != null && isOverlapped == false))
@@ -232,7 +231,7 @@ public class OverlapCheckDlg extends Dialog implements ILDrawSubscriber {
 			Display.getDefault().asyncExec(new Runnable() {
 				@Override
 				public void run() {
-					updatePartList();					
+					updatePartList();
 					createTable();
 					isNeedUpdate = true;
 				}

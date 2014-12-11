@@ -11,11 +11,16 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 
+import Connectivity.Axle;
 import Connectivity.Connectivity;
+import Connectivity.Slider;
+import ConnectivityEditor.Connectivity.AxleT;
 import ConnectivityEditor.Connectivity.ConnectivityGenerator;
 import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoWrapper;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
 
-public class SliderEditorComposite extends Composite {
+public class SliderEditorComposite extends ConnectivityEditorComposite {
 	private Combo combo_Length;
 	private Button btnCheck_StartCapped;
 	private Button btnCheck_EndCapped;
@@ -32,6 +37,20 @@ public class SliderEditorComposite extends Composite {
 	 */
 	public SliderEditorComposite(Composite parent, int style) {
 		super(parent, style);
+		init();
+
+		// this.pack();
+	}
+
+	public SliderEditorComposite(Composite parent, int style, Connectivity conn) {
+		super(parent, style);
+		this.conn = conn;
+		init();
+
+		// this.pack();
+	}
+
+	private void init() {
 		GridData gridData = new GridData(GridData.FILL_BOTH);
 		this.setLayoutData(gridData);
 		setLayout(new GridLayout());
@@ -80,40 +99,53 @@ public class SliderEditorComposite extends Composite {
 
 		btnCheck_StartCapped = new Button(this, SWT.CHECK);
 		btnCheck_StartCapped.setText("Start Capped");
-		gridData = new GridData(GridData.BEGINNING, GridData.BEGINNING, true, false);
+		gridData = new GridData(GridData.BEGINNING, GridData.BEGINNING, true,
+				false);
 		btnCheck_StartCapped.setLayoutData(gridData);
-		
-		 btnCheck_EndCapped = new Button(this, SWT.CHECK);
-		 btnCheck_EndCapped.setText("End Capped");
-		 gridData = new GridData(GridData.BEGINNING, GridData.BEGINNING, true, false);
-		 btnCheck_EndCapped.setLayoutData(gridData);
-		
-		 btnCheck_Cylindrial = new Button(this, SWT.CHECK);
-		 btnCheck_Cylindrial.setText("Cylindrical");
-		 gridData = new GridData(GridData.BEGINNING, GridData.BEGINNING, true, false);
-		 btnCheck_Cylindrial.setLayoutData(gridData);
-		 
-		 Button btnGenerate = new Button(this, SWT.NONE);
+
+		btnCheck_EndCapped = new Button(this, SWT.CHECK);
+		btnCheck_EndCapped.setText("End Capped");
+		gridData = new GridData(GridData.BEGINNING, GridData.BEGINNING, true,
+				false);
+		btnCheck_EndCapped.setLayoutData(gridData);
+
+		btnCheck_Cylindrial = new Button(this, SWT.CHECK);
+		btnCheck_Cylindrial.setText("Cylindrical");
+		gridData = new GridData(GridData.BEGINNING, GridData.BEGINNING, true,
+				false);
+		btnCheck_Cylindrial.setLayoutData(gridData);
+
+		Button btnGenerate = new Button(this, SWT.NONE);
 		btnGenerate.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(SelectionEvent arg0) {
 				handleGenerate();
 			}
 		});
-		 btnGenerate.setText("Generate");
-		 gridData = new GridData(GridData.CENTER, GridData.BEGINNING, true, false);
-		 gridData.widthHint=96;
-		 gridData.heightHint=47;
-		 btnGenerate.setLayoutData(gridData);
+		if (this.conn == null) {
+			btnGenerate.setText("Generate");
+		} else {
+			Slider slider = (Slider) conn;
+			combo_Type.select(slider.gettype() - 2);
+			combo_Length.select(combo_Length.indexOf(""
+					+ ((int) slider.getlength() / 8)));
+			btnCheck_EndCapped.setSelection(slider.getendCapped() == 1);
+			btnCheck_StartCapped.setSelection(slider.getstartCapped() == 1);
+			btnCheck_Cylindrial.setSelection(slider.getcylindrical() == 1);
 
-		// this.pack();
+			btnGenerate.setText("Apply");
+		}
+		gridData = new GridData(GridData.CENTER, GridData.BEGINNING, true,
+				false);
+		gridData.widthHint = 96;
+		gridData.heightHint = 47;
+		btnGenerate.setLayoutData(gridData);
 	}
 
 	protected void handleGenerate() {
 		boolean isStartCapped;
 		boolean isEndCapped;
 		boolean isCylindrical;
-		boolean isRequireGrabbing;
 		int length;
 		int type;
 
@@ -128,7 +160,18 @@ public class SliderEditorComposite extends Composite {
 						isCylindrical);
 		newItem.setParent(ConnectivityEditor.getInstance().getWorkingPart());
 
-		ConnectivityEditorUndoWrapper.getInstance().addConnectivity(newItem);
+		if (conn == null)
+			ConnectivityEditorUndoWrapper.getInstance()
+					.addConnectivity(newItem);
+		else {
+			Slider newSlider = (Slider) newItem;
+			Slider slider = (Slider) conn;
+
+			slider.apply(newSlider);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.ConnectivityDidChanged);
+		}
 	}
 
 	@Override

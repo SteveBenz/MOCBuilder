@@ -19,6 +19,7 @@ import Common.Vector2f;
 import Common.Vector3f;
 import Common.Vector4f;
 import Connectivity.CollisionBox;
+import Connectivity.CollisionShape;
 import Connectivity.Connectivity;
 import Connectivity.ConnectivityManager;
 import Connectivity.Hole;
@@ -112,7 +113,7 @@ public class LDrawPart extends LDrawDrawableElement implements ILDrawObserver {
 
 	ArrayList<Connectivity> connectivityList = null;
 	ArrayList<MatrixItem> connectivityMatrixItemList = null;
-	ArrayList<CollisionBox> collisionBoxList = null;
+	ArrayList<CollisionShape> collisionShapeList = null;
 	private boolean isDragingPart = false;
 
 	public LDrawPart() {
@@ -548,7 +549,8 @@ public class LDrawPart extends LDrawDrawableElement implements ILDrawObserver {
 
 		float[][] elements = transformation.getElement();
 
-		return String.format(Locale.US,"1 %s %s %s %s %s %s %s %s %s %s %s %s %s %s",
+		return String.format(Locale.US,
+				"1 %s %s %s %s %s %s %s %s %s %s %s %s %s %s",
 				LDrawUtilities.outputStringForColor(color),
 
 				LDrawUtilities.outputStringForFloat(elements[3][0]), // position.x,
@@ -1067,8 +1069,9 @@ public class LDrawPart extends LDrawDrawableElement implements ILDrawObserver {
 			parseGroup = new DispatchGroup();
 			parseGroup.extendsFromParent(parentGroup);
 
-			if (transformationMatrix().getDet() < 0)
-				parseGroup.setReversed();
+//			if (transformationMatrix().getDet() < 0) {
+//				parseGroup.setReversed();
+//			}
 
 			referenceName = newPartName + (parseGroup.isCCW() ? "" : "_CW");
 
@@ -1730,7 +1733,7 @@ public class LDrawPart extends LDrawDrawableElement implements ILDrawObserver {
 				cacheBounds = null;
 				connectivityList = null;
 				connectivityMatrixItemList = null;
-				collisionBoxList = null;
+				collisionShapeList = null;
 
 				invalCache(CacheFlagsT.CacheFlagBounds);
 				cacheModel.addObserver(this);
@@ -2037,34 +2040,34 @@ public class LDrawPart extends LDrawDrawableElement implements ILDrawObserver {
 		return transformationMatrix;
 	}
 
-	public synchronized ArrayList<CollisionBox> getCollisionBoxList() {
-		return getCollisionBoxList(true);
+	public synchronized ArrayList<CollisionShape> getCollisionShapeList() {
+		return getCollisionShapeList(true);
 	}
 
-	private synchronized ArrayList<CollisionBox> getCollisionBoxList(
+	private synchronized ArrayList<CollisionShape> getCollisionShapeList(
 			boolean useCache) {
 		if (useCache == false) {
-			if (collisionBoxList != null)
-				collisionBoxList.clear();
-			collisionBoxList = null;
+			if (collisionShapeList != null)
+				collisionShapeList.clear();
+			collisionShapeList = null;
 		}
 
-		if (collisionBoxList == null) {
+		if (collisionShapeList == null) {
 			if (getCacheType() == PartTypeT.PartTypeSubmodel) {
-				collisionBoxList = new ArrayList<CollisionBox>();
+				collisionShapeList = new ArrayList<CollisionShape>();
 				for (LDrawStep step : getCacheModel().steps()) {
 					for (LDrawDirective directive : step.subdirectives()) {
 						if (directive instanceof LDrawPart) {
 							LDrawPart part = (LDrawPart) directive;
-							for (CollisionBox cbox : part.getCollisionBoxList()) {
+							for (CollisionShape cShape : part.getCollisionShapeList()) {
 								try {
-									CollisionBox newBox = (CollisionBox) cbox
+									CollisionShape newShape = (CollisionShape) cShape
 											.clone();
-									newBox.setTransformMatrix(Matrix4.multiply(
-											cbox.getTransformMatrix(),
+									newShape.setTransformMatrix(Matrix4.multiply(
+											cShape.getTransformMatrix(),
 											part.transformationMatrix()));
-									collisionBoxList.add(newBox);
-									newBox.setParent(this);
+									collisionShapeList.add(newShape);
+									newShape.setParent(this);
 								} catch (CloneNotSupportedException e) {
 									// TODO Auto-generated catch block
 									e.printStackTrace();
@@ -2077,20 +2080,20 @@ public class LDrawPart extends LDrawDrawableElement implements ILDrawObserver {
 				// if (collisionBoxList.size() > 100)
 				// collisionBoxList.clear();
 			} else {
-				collisionBoxList = ConnectivityLibrary.getInstance()
-						.getCollisionBox(displayName(), true);
-				if (collisionBoxList != null)
-					for (CollisionBox cBox : collisionBoxList) {
-						cBox.setParent(this);
-						cBox.updateConnectivityOrientationInfo();
+				collisionShapeList = ConnectivityLibrary.getInstance()
+						.getCollisionShape(displayName(), true);
+				if (collisionShapeList != null)
+					for (CollisionShape cShape : collisionShapeList) {
+						cShape.setParent(this);
+						cShape.updateConnectivityOrientationInfo();
 					}
 			}
 		}
 
-		if (collisionBoxList == null)
-			collisionBoxList = new ArrayList<CollisionBox>();
+		if (collisionShapeList == null)
+			collisionShapeList = new ArrayList<CollisionShape>();
 
-		return collisionBoxList;
+		return collisionShapeList;
 	}
 
 	public Matrix4 getRotationMatrix() {
@@ -2109,31 +2112,31 @@ public class LDrawPart extends LDrawDrawableElement implements ILDrawObserver {
 		return part;
 	}
 
-	public ArrayList<CollisionBox> getCollisionBoxList(Matrix4 transformMatrix,
+	public ArrayList<CollisionShape> getCollisionShapeList(Matrix4 transformMatrix,
 			Box3 boundingBox) {
 		if (getCacheType() != PartTypeT.PartTypeSubmodel) {
 			if (LDrawUtilities.isIntersected(boundingBox, boundingBox3(Matrix4
 					.multiply(transformationMatrix(), transformMatrix))))
-				return getCollisionBoxList();
+				return getCollisionShapeList();
 			else
-				return new ArrayList<CollisionBox>();
+				return new ArrayList<CollisionShape>();
 		}
 
-		ArrayList<CollisionBox> retList = new ArrayList<CollisionBox>();
+		ArrayList<CollisionShape> retList = new ArrayList<CollisionShape>();
 
 		Matrix4 newMatrix = Matrix4.multiply(transformationMatrix(),
 				transformMatrix);
 		for (LDrawPart subPart : LDrawUtilities.extractLDrawPartListModel(
 				getCacheModel(), false)) {
-			for (CollisionBox cbox : subPart.getCollisionBoxList(newMatrix,
+			for (CollisionShape cShape : subPart.getCollisionShapeList(newMatrix,
 					boundingBox)) {
 				try {
-					CollisionBox newBox = (CollisionBox) cbox.clone();
-					newBox.setTransformMatrix(Matrix4.multiply(
-							cbox.getTransformMatrix(),
+					CollisionShape newShape = (CollisionShape) cShape.clone();
+					newShape.setTransformMatrix(Matrix4.multiply(
+							cShape.getTransformMatrix(),
 							subPart.transformationMatrix()));
-					retList.add(newBox);
-					newBox.setParent(this);
+					retList.add(newShape);
+					newShape.setParent(this);
 				} catch (CloneNotSupportedException e) {
 					e.printStackTrace();
 				}

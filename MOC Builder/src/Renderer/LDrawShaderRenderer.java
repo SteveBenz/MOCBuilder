@@ -8,6 +8,8 @@ import java.util.HashMap;
 import javax.media.opengl.GL2;
 
 import Command.LDrawColorT;
+import Common.Vector3f;
+import Connectivity.LDrawVertexCollector;
 import LDraw.Support.ColorLibrary;
 import LDraw.Support.GLMatrixMath;
 
@@ -628,7 +630,20 @@ public class LDrawShaderRenderer implements ILDrawRenderer, ILDrawCollector {
 		float c[] = new float[4];
 
 		set_color4fv(color, c);
-
+//		Vector3f normalVector = new Vector3f(normal[0], normal[1], normal[2]);
+//		normalVector.normalize();
+//		for (int i = 0; i < vertices.length; i += 3)
+//			for (int j = 0; j < 3; j++)
+//				vertices[i + j] -= normalVector.getArray()[j];
+//		
+//		float[] center = new float[3];
+//		for (int i = 0; i < 3; i++)
+//			center[i] = (vertices[i] + vertices[6 + i]) / 2;
+//		
+//		for (int i = 0; i < vertices.length; i += 3)
+//			for (int j = 0; j < 3; j++)
+//				vertices[i + j] = (vertices[i + j]-center[j])*0.9f+center[j];
+		
 		dl_now.addQuad(vertices, normal, c);
 
 	}// end drawQuad:normal:color:
@@ -647,6 +662,20 @@ public class LDrawShaderRenderer implements ILDrawRenderer, ILDrawCollector {
 
 		set_color4fv(color, c);
 
+//		Vector3f normalVector = new Vector3f(normal[0], normal[1], normal[2]);
+//		normalVector.normalize();
+//		for (int i = 0; i < vertices.length; i += 3)
+//			for (int j = 0; j < 3; j++)
+//				vertices[i + j] -= normalVector.getArray()[j];
+//		
+//		float[] center = new float[3];
+//		for (int i = 0; i < 3; i++)
+//			center[i] = (vertices[i] + vertices[3 + i]+ vertices[6 + i]) / 3;
+//		
+//		for (int i = 0; i < vertices.length; i += 3)
+//			for (int j = 0; j < 3; j++)
+//				vertices[i + j] = (vertices[i + j]-center[j])*0.9f+center[j];
+
 		dl_now.addTri(vertices, normal, c);
 
 	}// end drawTri:normal:color:
@@ -663,7 +692,7 @@ public class LDrawShaderRenderer implements ILDrawRenderer, ILDrawCollector {
 		float c[] = new float[4];
 
 		set_color4fv(color, c);
-		
+
 		dl_now.addLine(vertices, normal, c);
 	}// end drawLine:normal:color:
 
@@ -923,7 +952,7 @@ public class LDrawShaderRenderer implements ILDrawRenderer, ILDrawCollector {
 			return;
 		if (drawTransparent && color_now[3] == 1.0)
 			return;
-		
+
 		synchronized (this) {
 			dl.draw(gl2, session, tex_now, color_now, compl_now, transform_now,
 					false);

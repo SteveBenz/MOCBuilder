@@ -5,6 +5,8 @@ import Common.Vector3f;
 import Connectivity.Axle;
 import Connectivity.Ball;
 import Connectivity.CollisionBox;
+import Connectivity.CollisionCylinder;
+import Connectivity.CollisionSphere;
 import Connectivity.Connectivity;
 import Connectivity.Fixed;
 import Connectivity.Hinge;
@@ -23,8 +25,9 @@ public class ConnectivityGenerator {
 			for (int column = 0; column < nColumns; column++)
 				types[column][row] = 2;
 
-//		ConnectivityGenerator.getInstance().generateStud(1, 1, types);
-		System.out.println(ConnectivityGenerator.getInstance().generateAxle(1, 1, false, false, false, false));
+		// ConnectivityGenerator.getInstance().generateStud(1, 1, types);
+		System.out.println(ConnectivityGenerator.getInstance().generateAxle(1,
+				1, false, false, false, false));
 	}
 
 	private static ConnectivityGenerator _instance = null;
@@ -78,7 +81,7 @@ public class ConnectivityGenerator {
 					strBuilder.append("29:0,");
 					break;
 				case Round:
-					if (row % 2 != 0 && column%2!=0)
+					if (row % 2 != 0 && column % 2 != 0)
 						strBuilder.append("0:4:1,");
 					else
 						strBuilder.append("29:0,");
@@ -132,7 +135,7 @@ public class ConnectivityGenerator {
 					break;
 				case Round:
 					matrix[column * 2 + 1][row * 2 + 1] = HoleT.Round;
-					break;				
+					break;
 				default:
 					for (int i = 0; i < 3; i++)
 						for (int j = 0; j < 3; j++)
@@ -149,7 +152,7 @@ public class ConnectivityGenerator {
 					strBuilder.append("29:0,");
 					break;
 				case Round:
-					if (row % 2 != 0 && column%2!=0)
+					if (row % 2 != 0 && column % 2 != 0)
 						strBuilder.append("17:4:1,");
 					else
 						strBuilder.append("29:0,");
@@ -179,18 +182,19 @@ public class ConnectivityGenerator {
 		return newHole;
 	}
 
-	public Connectivity generateAxle(int type, int length, boolean isStartCapped,
-			boolean isEndCapped, boolean isGrabbing, boolean isRequireGrabbing) {
+	public Connectivity generateAxle(int type, int length,
+			boolean isStartCapped, boolean isEndCapped, boolean isGrabbing,
+			boolean isRequireGrabbing) {
 		Axle newAxle = new Axle();
-		newAxle.settype(""+type);
-		newAxle.setstartCapped(""+(isStartCapped?1:0));
-		newAxle.setendCapped(""+(isEndCapped?1:0));
-		newAxle.setstartCapped(""+(isStartCapped?1:0));
-		newAxle.setgrabbing(""+(isGrabbing?1:0));
-		newAxle.setrequireGrabbing(""+(isRequireGrabbing?1:0));		
-		newAxle.setlength(""+(length/25.0f));
+		newAxle.settype("" + type);
+		newAxle.setstartCapped("" + (isStartCapped ? 1 : 0));
+		newAxle.setendCapped("" + (isEndCapped ? 1 : 0));
+		newAxle.setstartCapped("" + (isStartCapped ? 1 : 0));
+		newAxle.setgrabbing("" + (isGrabbing ? 1 : 0));
+		newAxle.setrequireGrabbing("" + (isRequireGrabbing ? 1 : 0));
+		newAxle.setlength("" + (length / 25.0f));
 		newAxle.setFileName("Axle");
-		
+
 		System.out.println(newAxle);
 		return newAxle;
 	}
@@ -198,37 +202,48 @@ public class ConnectivityGenerator {
 	public Connectivity generateFixed(int type) {
 		// TODO Auto-generated method stub
 		Fixed newFixed = new Fixed();
-		newFixed.settype(""+type);		
-		newFixed.setFileName("Fixed");		
+		newFixed.settype("" + type);
+		newFixed.setFileName("Fixed");
 		System.out.println(newFixed);
 		return newFixed;
 	}
 
 	public Connectivity generateHinge(int type) {
 		Hinge newHinge = new Hinge();
-		newHinge.settype(""+type);		
-		newHinge.setFileName("Hinge");		
+		newHinge.settype("" + type);
+		newHinge.setFileName("Hinge");
 		System.out.println(newHinge);
 		return newHinge;
 	}
 
-	public CollisionBox generateCollisionBox(CollisionBoxT type,
-			Vector3f size) {
-		
-		size.x -=0.25;
-		size.y -=0.25;
-		size.z -=0.25;
-		
+	public CollisionBox generateCollisionBox(Vector3f size) {
+
 		CollisionBox newBox = new CollisionBox();
-		newBox.setSize(size.x,  size.y,  size.z);		
+		newBox.setSize(size.x, size.y, size.z);
 		newBox.setFileName("Collision Box");
 		return newBox;
 	}
 
+	public CollisionSphere generateCollisionSphere(float radius) {
+
+		CollisionSphere newObj = new CollisionSphere();
+		newObj.setRadius(radius);
+		newObj.setFileName("Collision Sphere");
+		return newObj;
+	}
+
+	public CollisionCylinder generateCollisionCylinder(Vector3f size) {
+
+		CollisionCylinder newObj = new CollisionCylinder();
+		newObj.setSize(size.getX(), size.getY(), size.getZ());
+		newObj.setFileName("Collision Cylinder");
+		return newObj;
+	}
+
 	public Connectivity generateBall(int type) {
 		Ball newBall = new Ball();
-		newBall.settype(""+type);		
-		newBall.setFileName("Ball");		
+		newBall.settype("" + type);
+		newBall.setFileName("Ball");
 		System.out.println(newBall);
 		return newBall;
 	}
@@ -236,14 +251,14 @@ public class ConnectivityGenerator {
 	public Connectivity generateSlider(int type, int length,
 			boolean isStartCapped, boolean isEndCapped, boolean isCylindrical) {
 		Slider newSlider = new Slider();
-		newSlider.settype(""+type);
-		newSlider.setstartCapped(""+(isStartCapped?1:0));
-		newSlider.setendCapped(""+(isEndCapped?1:0));
-		newSlider.setstartCapped(""+(isStartCapped?1:0));
-		newSlider.setcylindrical(""+(isCylindrical?1:0));		
-		newSlider.setlength(""+(length*8/25.0f));
+		newSlider.settype("" + type);
+		newSlider.setstartCapped("" + (isStartCapped ? 1 : 0));
+		newSlider.setendCapped("" + (isEndCapped ? 1 : 0));
+		newSlider.setstartCapped("" + (isStartCapped ? 1 : 0));
+		newSlider.setcylindrical("" + (isCylindrical ? 1 : 0));
+		newSlider.setlength("" + (length * 8 / 25.0f));
 		newSlider.setFileName("Slider");
-		
+
 		System.out.println(newSlider);
 		return newSlider;
 	}

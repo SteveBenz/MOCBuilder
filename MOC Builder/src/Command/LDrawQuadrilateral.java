@@ -80,17 +80,20 @@ public class LDrawQuadrilateral extends LDrawDrawableElement implements ILDrawDr
 	public LDrawQuadrilateral initWithLines(ArrayList<String> lines,
 			Range range, DispatchGroup parentGroup) {
 		
+		DispatchGroup dispatchGroup = new DispatchGroup();
+		dispatchGroup.extendsFromParent(parentGroup);
+		
 		String workingLine = lines.get(range.getLocation());
 		String parsedField = null;
 		Vector3f workingVertex = Vector3f.getZeroVector3f();
 		LDrawColor parsedColor = null;
 
 		try {
-			super.initWithLines(lines, range, parentGroup);
+			super.initWithLines(lines, range, dispatchGroup);
 		} catch (Exception e1) {
 			// TODO Auto-generated catch block
 			e1.printStackTrace();
-		}
+		} 
 
 		// A malformed part could easily cause a string indexing error, which
 		// would
@@ -161,9 +164,8 @@ public class LDrawQuadrilateral extends LDrawDrawableElement implements ILDrawDr
 				setVertex4(workingVertex);
 
 				fixBowtie();
-				if(parentGroup.isCCW()==false)
-					setToCW();
-				
+				if(dispatchGroup.isCCW()==false)
+					setToCW();				
 			} else
 				throw new Exception("BricksmithParseException: "
 						+ "Bad line syntax");
@@ -863,7 +865,8 @@ public class LDrawQuadrilateral extends LDrawDrawableElement implements ILDrawDr
 		vertex3 = MatrixMath.V3MulPointByProjMatrix(vertex3, transform);
 		vertex4 = MatrixMath.V3MulPointByProjMatrix(vertex4, transform);
 
-		normal = MatrixMath.V3MulPointByMatrix(normal, normalTransform);
+		normal = MatrixMath.V3RotateByTransformMatrix(normal, transform);
+//		normal = MatrixMath.V3MulPointByMatrix(normal, normalTransform);
 
 		quadrilaterals.add(this);
 

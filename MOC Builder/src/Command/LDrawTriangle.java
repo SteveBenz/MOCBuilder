@@ -724,7 +724,8 @@ public class LDrawTriangle extends LDrawDrawableElement implements ILDrawDragHan
 		vertex2 = MatrixMath.V3MulPointByProjMatrix(vertex2, transform);
 		vertex3 = MatrixMath.V3MulPointByProjMatrix(vertex3, transform);
 
-		normal = MatrixMath.V3MulPointByMatrix(normal, normalTransform);
+		normal = MatrixMath.V3RotateByTransformMatrix(normal, transform);
+//		normal = MatrixMath.V3MulPointByMatrix(normal, normalTransform);
 
 		triangles.add(this);
 

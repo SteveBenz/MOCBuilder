@@ -11,12 +11,16 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 
+import Connectivity.Ball;
 import Connectivity.Connectivity;
+import Connectivity.Fixed;
 import ConnectivityEditor.Connectivity.ConnectivityGenerator;
 import ConnectivityEditor.Connectivity.FixedT;
 import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoWrapper;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
 
-public class FixedEditorComposite extends Composite {
+public class FixedEditorComposite extends ConnectivityEditorComposite {
 	private Label lblNewLabel;
 	private Combo combo_Type;
 
@@ -28,6 +32,16 @@ public class FixedEditorComposite extends Composite {
 	 */
 	public FixedEditorComposite(Composite parent, int style) {
 		super(parent, style);
+		init();
+	}
+
+	public FixedEditorComposite(Composite parent, int style, Connectivity conn) {
+		super(parent, style);
+		this.conn = conn;
+		init();
+	}
+
+	private void init() {
 		GridData gridData = new GridData(GridData.FILL_BOTH);
 		this.setLayoutData(gridData);
 		setLayout(new GridLayout());
@@ -45,10 +59,10 @@ public class FixedEditorComposite extends Composite {
 
 		combo_Type = new Combo(group, SWT.READ_ONLY);
 		combo_Type.setBounds(69, 17, 88, 23);
-		
+
 		for (FixedT type : FixedT.values())
 			combo_Type.add(type.toString());
-		
+
 		combo_Type.select(0);
 
 		gridData = new GridData(GridData.FILL, GridData.BEGINNING, true, false);
@@ -63,15 +77,21 @@ public class FixedEditorComposite extends Composite {
 				handleGenerate();
 			}
 		});
-		btnGenerate.setText("Generate");
+		if (this.conn == null) {
+			btnGenerate.setText("Generate");
+		} else {
+			combo_Type.select(combo_Type.indexOf(FixedT.byValue(conn.gettype())
+					.toString()));
+			btnGenerate.setText("Apply");
+		}
 		gridData = new GridData(GridData.CENTER, GridData.BEGINNING, true,
 				false);
-		 gridData.widthHint=96;
-		 gridData.heightHint=47;
+		gridData.widthHint = 96;
+		gridData.heightHint = 47;
 		btnGenerate.setLayoutData(gridData);
 	}
 
-	protected void handleGenerate() {		
+	protected void handleGenerate() {
 		int type;
 		type = FixedT.valueOf(combo_Type.getText()).getValue();
 
@@ -79,7 +99,18 @@ public class FixedEditorComposite extends Composite {
 				.generateFixed(type);
 		newItem.setParent(ConnectivityEditor.getInstance().getWorkingPart());
 
-		ConnectivityEditorUndoWrapper.getInstance().addConnectivity(newItem);
+		if (conn == null)
+			ConnectivityEditorUndoWrapper.getInstance()
+					.addConnectivity(newItem);
+		else {
+			Fixed newConn = (Fixed) newItem;
+			Fixed thisConn = (Fixed) conn;
+
+			thisConn.apply(newConn);
+
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.ConnectivityDidChanged);
+		}
 	}
 
 	@Override

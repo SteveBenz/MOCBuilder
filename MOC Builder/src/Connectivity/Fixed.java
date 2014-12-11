@@ -8,6 +8,10 @@ public class Fixed extends Connectivity {
 	int axes;
 	String tag;
 
+	public void apply(Fixed newConn) {
+		this.type = newConn.gettype();
+	}
+
 	public int getaxes() {
 		return axes;
 	}
@@ -81,4 +85,5 @@ public class Fixed extends Connectivity {
 		}
 		return newMatrix;
 	}
+
 }

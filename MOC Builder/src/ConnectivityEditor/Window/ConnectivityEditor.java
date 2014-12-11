@@ -23,13 +23,12 @@ import Common.Ray3;
 import Common.Size2;
 import Common.Vector3f;
 import Connectivity.CollisionBox;
+import Connectivity.CollisionShape;
 import Connectivity.Connectivity;
 import ConnectivityEditor.Connectivity.ConnectivityRendererForConnectivityEditor;
 import ConnectivityEditor.ConnectivityControlGuide.ConnectivityMovementGuideRenderer;
-import ConnectivityEditor.UndoRedo.AddNDeleteConnAction;
 import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoRedoManager;
 import LDraw.Files.LDrawFile;
-import LDraw.Files.LDrawStep;
 import LDraw.Support.ConnectivityLibrary;
 import LDraw.Support.LDrawDirective;
 import LDraw.Support.LDrawGLCameraScroller;
@@ -195,8 +194,8 @@ public class ConnectivityEditor {
 	public void addConnectivity(Connectivity conn) {
 		if (workingPart == null)
 			return;
-		if (conn instanceof CollisionBox)
-			workingPart.getCollisionBoxList().add((CollisionBox) conn);
+		if (conn instanceof CollisionShape)
+			workingPart.getCollisionShapeList().add((CollisionShape) conn);
 		else
 			workingPart.getConnectivityList().add(conn);
 
@@ -207,8 +206,8 @@ public class ConnectivityEditor {
 	public void removeConnectivity(Connectivity conn) {
 		if (workingPart == null)
 			return;
-		if (conn instanceof CollisionBox)
-			workingPart.getCollisionBoxList().remove((CollisionBox) conn);
+		if (conn instanceof CollisionShape)
+			workingPart.getCollisionShapeList().remove((CollisionShape) conn);
 		else
 			workingPart.getConnectivityList().remove(conn);
 
@@ -238,6 +237,9 @@ public class ConnectivityEditor {
 		ldrawFile.activeModel().visibleStep().addDirective(part);
 		workingPart = part;
 		part.setSelected(true);
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.ConnectivityDidChanged);
 
 	}
 
@@ -274,8 +276,9 @@ public class ConnectivityEditor {
 					fos.write(conn.toString().getBytes());
 					fos.write("\r\n".getBytes());
 				}
-			if (workingPart.getCollisionBoxList() != null)
-				for (CollisionBox collision : workingPart.getCollisionBoxList()) {
+			if (workingPart.getCollisionShapeList() != null)
+				for (CollisionShape collision : workingPart
+						.getCollisionShapeList()) {
 					fos.write(collision.toString().getBytes());
 					fos.write("\r\n".getBytes());
 				}

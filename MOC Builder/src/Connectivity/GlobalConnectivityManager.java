@@ -8,7 +8,6 @@ import java.util.HashMap;
 import Builder.BuilderConfigurationManager;
 import Builder.DirectiveSelectionManager;
 import Command.LDrawPart;
-import Command.PartTypeT;
 import Common.Box3;
 import Common.Matrix4;
 import Common.Vector2f;
@@ -19,6 +18,8 @@ import LDraw.Support.MatrixMath;
 import LDraw.Support.type.LDrawGridTypeT;
 import Window.GlobalMousePosition;
 import Window.MOCBuilder;
+
+import com.bulletphysics.CollisionDetectionWorld;
 
 public class GlobalConnectivityManager {
 	private static GlobalConnectivityManager _instance = null;
@@ -63,25 +64,59 @@ public class GlobalConnectivityManager {
 
 	public boolean checkCollision(LDrawPart part, Matrix4 testingTransform) {
 		boolean isCollide = false;
+		Box3 testPartBoundingBox = part.boundingBox3(testingTransform);
+		Vector3f size = testPartBoundingBox.getMax().sub(
+				testPartBoundingBox.getMin());
+		Vector3f center = testPartBoundingBox.getMax()
+				.add(testPartBoundingBox.getMin()).scale(0.5f);
+		int worldSize = (int) Math.max(size.x, Math.max(size.y, size.z));
 
-		isCollide = checkBoundingBoxIntersection(part, testingTransform);
+		CollisionDetectionWorld detectionWorld = new CollisionDetectionWorld(10240, 
+				worldSize * 2, center.x, center.y, center.z);
 
-		if (isCollide == false)
-			return isCollide;
+		for (LDrawPart adjPart : getAdjacentPartList(testPartBoundingBox)) {
+			// System.out.println(adjPart.transformationMatrix());
+			for (CollisionShape cShape : adjPart.getCollisionShapeList()) {
+				cShape.updateConnectivityOrientationInfo();
+				if (adjPart == part)
+					detectionWorld.addCollide(
+							cShape.getJBulletCollisionObject(testingTransform),
+							adjPart);
+				else
+					detectionWorld.addCollide(cShape
+							.getJBulletCollisionObject(adjPart
+									.transformationMatrix()), adjPart);
 
-		if (part.getCacheType() == PartTypeT.PartTypeSubmodel) {
-			isCollide = false;
-			for (LDrawPart subPart : LDrawUtilities.extractLDrawPartListModel(
-					part.getCacheModel(), false))
-				if (checkCollision(subPart, Matrix4.multiply(
-						subPart.transformationMatrix(), testingTransform)))
-					return true;
-
-		} else
-			isCollide = CheckCollisionBox(part, testingTransform);
+			}
+		}
+		isCollide = detectionWorld.isCollide();
 
 		return isCollide;
 	}
+
+	// depreciated
+	// public boolean checkCollision2(LDrawPart part, Matrix4 testingTransform)
+	// {
+	// boolean isCollide = false;
+	//
+	// isCollide = checkBoundingBoxIntersection(part, testingTransform);
+	//
+	// if (isCollide == false)
+	// return isCollide;
+	//
+	// if (part.getCacheType() == PartTypeT.PartTypeSubmodel) {
+	// isCollide = false;
+	// for (LDrawPart subPart : LDrawUtilities.extractLDrawPartListModel(
+	// part.getCacheModel(), false))
+	// if (checkCollision(subPart, Matrix4.multiply(
+	// subPart.transformationMatrix(), testingTransform)))
+	// return true;
+	//
+	// } else
+	// isCollide = CheckCollisionBox(part, testingTransform);
+	//
+	// return isCollide;
+	// }
 
 	private boolean checkBoundingBoxIntersection(LDrawPart part,
 			Matrix4 testingTransform) {
@@ -106,68 +141,70 @@ public class GlobalConnectivityManager {
 		return isIntersected;
 	}
 
-	public boolean CheckCollisionBox(LDrawPart srcPart,
-			Matrix4 testingPartTransformMatrix) {
-
-		ArrayList<CollisionBox> srcboxes = srcPart.getCollisionBoxList();
-		if (srcboxes == null || srcboxes.size() == 0)
-			return false;
-
-		Box3 boundingBox = srcPart.boundingBox3(testingPartTransformMatrix);
-
-		ArrayList<LDrawPart> adjacentPartList = getAdjacentPartList(boundingBox);
-		if (adjacentPartList == null)
-			return false;
-		adjacentPartList.remove(srcPart);
-
-		HashMap<LDrawPart, ArrayList<CollisionBox>> destBoxesMap = new HashMap<LDrawPart, ArrayList<CollisionBox>>();
-		for (LDrawPart destpart : adjacentPartList) {
-			if (destpart.isSelected())
-				continue;
-			destBoxesMap.put(destpart, destpart.getCollisionBoxList(
-					Matrix4.getIdentityMatrix4(), boundingBox));
-		}
-
-		for (int i = 0; i < srcboxes.size(); i++) {
-			CollisionBox srcCollisionBox = srcboxes.get(i);
-
-			Vector3f[] srcvAxisDir = srcCollisionBox
-					.MakeDirection(testingPartTransformMatrix);
-			float[] srcfAxisLen = srcCollisionBox.GetAxisLength();
-
-			Vector3f srcCenter = srcCollisionBox
-					.getCenter(testingPartTransformMatrix);
-
-			for (LDrawPart destpart : adjacentPartList) {
-				if (destpart.isSelected())
-					continue;
-
-				ArrayList<CollisionBox> destboxes = destBoxesMap.get(destpart);
-
-				if (destboxes == null || destboxes.size() == 0)
-					continue;
-
-				for (int k = 0; k < destboxes.size(); k++) {
-					CollisionBox destCollisionBox = destboxes.get(k);
-
-					Vector3f[] destvAxisDir = destCollisionBox
-							.MakeDirection(destpart.transformationMatrix());
-					float[] destfAxisLen = destCollisionBox.GetAxisLength();
-
-					Vector3f destCenter = destCollisionBox.getCenter(destpart);
-
-					if (CollisionBox.CheckOBBCollision(srcCollisionBox,
-							srcCenter, srcvAxisDir, srcfAxisLen,
-							destCollisionBox, destCenter, destvAxisDir,
-							destfAxisLen) == true) {
-						return true;
-					}
-				}
-			}
-		}
-
-		return false;
-	}
+	// depreciated
+	// public boolean CheckCollisionBox(LDrawPart srcPart,
+	// Matrix4 testingPartTransformMatrix) {
+	//
+	// ArrayList<CollisionBox> srcboxes = srcPart.getCollisionBoxList();
+	// if (srcboxes == null || srcboxes.size() == 0)
+	// return false;
+	//
+	// Box3 boundingBox = srcPart.boundingBox3(testingPartTransformMatrix);
+	//
+	// ArrayList<LDrawPart> adjacentPartList = getAdjacentPartList(boundingBox);
+	// if (adjacentPartList == null)
+	// return false;
+	// adjacentPartList.remove(srcPart);
+	//
+	// HashMap<LDrawPart, ArrayList<CollisionBox>> destBoxesMap = new
+	// HashMap<LDrawPart, ArrayList<CollisionBox>>();
+	// for (LDrawPart destpart : adjacentPartList) {
+	// if (destpart.isSelected())
+	// continue;
+	// destBoxesMap.put(destpart, destpart.getCollisionBoxList(
+	// Matrix4.getIdentityMatrix4(), boundingBox));
+	// }
+	//
+	// for (int i = 0; i < srcboxes.size(); i++) {
+	// CollisionBox srcCollisionBox = srcboxes.get(i);
+	//
+	// Vector3f[] srcvAxisDir = srcCollisionBox
+	// .MakeDirection(testingPartTransformMatrix);
+	// float[] srcfAxisLen = srcCollisionBox.GetAxisLength();
+	//
+	// Vector3f srcCenter = srcCollisionBox
+	// .getCenter(testingPartTransformMatrix);
+	//
+	// for (LDrawPart destpart : adjacentPartList) {
+	// if (destpart.isSelected())
+	// continue;
+	//
+	// ArrayList<CollisionBox> destboxes = destBoxesMap.get(destpart);
+	//
+	// if (destboxes == null || destboxes.size() == 0)
+	// continue;
+	//
+	// for (int k = 0; k < destboxes.size(); k++) {
+	// CollisionBox destCollisionBox = destboxes.get(k);
+	//
+	// Vector3f[] destvAxisDir = destCollisionBox
+	// .MakeDirection(destpart.transformationMatrix());
+	// float[] destfAxisLen = destCollisionBox.GetAxisLength();
+	//
+	// Vector3f destCenter = destCollisionBox.getCenter(destpart);
+	//
+	// if (CollisionBox.CheckOBBCollision(srcCollisionBox,
+	// srcCenter, srcvAxisDir, srcfAxisLen,
+	// destCollisionBox, destCenter, destvAxisDir,
+	// destfAxisLen) == true) {
+	// return true;
+	// }
+	// }
+	// }
+	// }
+	//
+	// return false;
+	// }
 
 	public void clear() {
 		clear(true);
@@ -242,16 +279,16 @@ public class GlobalConnectivityManager {
 			if (MatrixMath.compareFloat(hittedWorldPos.y, 0) != 0) {
 				LDrawPart minPart = DirectiveSelectionManager.getInstance()
 						.getPartHavingMinY();
-				
+
 				float offsetY = -minPart.boundingBox3(
 						minPart.getRotationMatrix()).getMax().y;
 
 				testPosOfPart.y = hittedWorldPos.y + offsetY
 						+ part.position().sub(minPart.position()).y;
-				testPosOfPart = LDrawGridTypeT
-						.getSnappedPos(testPosOfPart,
-								BuilderConfigurationManager.getInstance()
-										.getGridUnit());
+				// testPosOfPart = LDrawGridTypeT
+				// .getSnappedPos(testPosOfPart,
+				// BuilderConfigurationManager.getInstance()
+				// .getGridUnit());
 
 				Matrix4 newTransform = DirectiveSelectionManager.getInstance()
 						.getStartMoveTransformMatrix(part);
@@ -282,8 +319,8 @@ public class GlobalConnectivityManager {
 							.sub(LDrawGridTypeT.getSnappedPos(newPosOfMinItem,
 									LDrawGridTypeT.Coarse));
 
-					Matrix4 newTransform = DirectiveSelectionManager.getInstance()
-							.getStartMoveTransformMatrix(part);
+					Matrix4 newTransform = DirectiveSelectionManager
+							.getInstance().getStartMoveTransformMatrix(part);
 					newTransform.element[3][0] = testPosOfPart.x
 							- snappedItemPosDiff.x;
 					newTransform.element[3][1] = testPosOfPart.y;
@@ -460,9 +497,10 @@ public class GlobalConnectivityManager {
 
 	private ConnectivityTestResult isConnectable(LDrawPart part,
 			Vector3f testingPosOfPart, Vector3f hittedPos) {
+
 		Matrix4 testingPartInitialTransforMatrix = null;
-		testingPartInitialTransforMatrix = DirectiveSelectionManager.getInstance()
-				.getStartMoveTransformMatrix(part);
+		testingPartInitialTransforMatrix = DirectiveSelectionManager
+				.getInstance().getStartMoveTransformMatrix(part);
 		if (testingPartInitialTransforMatrix == null)
 			testingPartInitialTransforMatrix = part.transformationMatrix();
 
@@ -476,6 +514,7 @@ public class GlobalConnectivityManager {
 		ConnectivityTestResult testResult = isConnectable_Potential(hittedPos,
 				part, testingPartInitialTransforMatrix);
 
+		// checkCollision(part,testingPartInitialTransforMatrix);
 		return testResult;
 	}
 
@@ -504,8 +543,6 @@ public class GlobalConnectivityManager {
 
 		if (testResult.getResultType() != ConnectivityTestResultT.False) {
 			if (BuilderConfigurationManager.getInstance().isUseCollision())
-				// if (CheckCollisionBox(part, testingPartTransformMatrix) ==
-				// true) {
 				if (checkCollision(part, testingPartTransformMatrix) == true) {
 					testResult.setResultType(ConnectivityTestResultT.False);
 					testResult.setMsg("Collision_2");
@@ -520,7 +557,6 @@ public class GlobalConnectivityManager {
 		ConnectivityTestResult testResult = null;
 		ArrayList<Connectivity> testingPartConnectivityList = part
 				.getConnectivityList();
-
 		if (testingPartConnectivityList.isEmpty())
 			return new ConnectivityTestResult();
 
@@ -607,7 +643,8 @@ public class GlobalConnectivityManager {
 
 		ArrayList<Connectivity> existingConnList = new ArrayList<Connectivity>();
 
-		// existingConnList �� part.boundingBox3 �ӿ� �ش��ϴ� Connectivity���� �־���.
+		// existingConnList �� part.boundingBox3 �ӿ� �ش��ϴ� Connectivity����
+		// �־���.
 		for (LDrawPart adjacentPart : getAdjacentPartList(conn.getParent()
 				.boundingBox3(testingPartTransformMatrix))) {
 			if (adjacentPart == conn.getParent())
@@ -817,21 +854,22 @@ public class GlobalConnectivityManager {
 
 									if (eItem.getDirectionVector().equals(
 											item.getDirectionVector())) {
-//										if (eItem.getConnectedConnectivity() != null) {
-//											System.out
-//													.println(item.getParent()
-//															.getParent()
-//															.displayName()
-//															+ ","
-//															+ eItem.getParent()
-//																	.getParent()
-//																	.displayName()
-//															+ ": "
-//															+ eItem.getCurrentPos()
-//																	.sub(item
-//																			.getCurrentPos())
-//																	.length());
-//										}
+										// if (eItem.getConnectedConnectivity()
+										// != null) {
+										// System.out
+										// .println(item.getParent()
+										// .getParent()
+										// .displayName()
+										// + ","
+										// + eItem.getParent()
+										// .getParent()
+										// .displayName()
+										// + ": "
+										// + eItem.getCurrentPos()
+										// .sub(item
+										// .getCurrentPos())
+										// .length());
+										// }
 
 										item.setConnectedConnectivity(eItem);
 										eItem.setConnectedConnectivity(item);
@@ -861,21 +899,22 @@ public class GlobalConnectivityManager {
 										.sub(item.getCurrentPos()).length() < 1) {
 									if (eItem.getDirectionVector().equals(
 											item.getDirectionVector())) {
-//										if (eItem.getConnectedConnectivity() != null) {
-//											System.out
-//													.println(item.getParent()
-//															.getParent()
-//															.displayName()
-//															+ ","
-//															+ eItem.getParent()
-//																	.getParent()
-//																	.displayName()
-//															+ ": "
-//															+ eItem.getCurrentPos()
-//																	.sub(item
-//																			.getCurrentPos())
-//																	.length());
-//										}
+										// if (eItem.getConnectedConnectivity()
+										// != null) {
+										// System.out
+										// .println(item.getParent()
+										// .getParent()
+										// .displayName()
+										// + ","
+										// + eItem.getParent()
+										// .getParent()
+										// .displayName()
+										// + ": "
+										// + eItem.getCurrentPos()
+										// .sub(item
+										// .getCurrentPos())
+										// .length());
+										// }
 
 										item.setConnectedConnectivity(eItem);
 										eItem.setConnectedConnectivity(item);

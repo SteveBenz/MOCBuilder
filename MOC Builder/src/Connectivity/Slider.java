@@ -15,6 +15,14 @@ public class Slider extends Connectivity {
 	float[] spring;
 	String tag;
 
+	public void apply(Slider newSlider) {
+		this.type = newSlider.gettype();
+		this.startCapped = newSlider.getstartCapped();
+		this.endCapped = newSlider.getendCapped();
+		this.length = newSlider.getlength();
+		this.cylindrical = newSlider.getcylindrical();
+	}
+
 	public int getstartCapped() {
 		return startCapped;
 	}
@@ -70,7 +78,7 @@ public class Slider extends Connectivity {
 	@Override
 	public String toString() {
 		String str = String.format("%d %d %f %d", startCapped, endCapped,
-				length/25, cylindrical);
+				length / 25, cylindrical);
 		if (spring != null) {
 			str += " " + spring[0];
 			for (int i = 1; i < spring.length; i++) {
@@ -136,7 +144,7 @@ public class Slider extends Connectivity {
 			boolean isSameDirection = false;
 			if (endPointOfExsiting > 0) {
 				isSameDirection = true;
-				minSlidingLength = -(getlength()+existingSlider.getlength());
+				minSlidingLength = -(getlength() + existingSlider.getlength());
 				if (existingSlider.getstartCapped() != 0 || getendCapped() != 0)
 					minSlidingLength = 0;
 
@@ -227,10 +235,10 @@ public class Slider extends Connectivity {
 		for (int i = 0; i < 3; i++)
 			initMatrix.element[3][i] = 0;
 
-//		System.out.println(getDirectionVector(initMatrix));
-//		System.out.println(getDirectionVector(candidate));
-//		System.out.println(getDirectionVector(inverseOfCandidate));
-//		System.out.println("#####################");
+		// System.out.println(getDirectionVector(initMatrix));
+		// System.out.println(getDirectionVector(candidate));
+		// System.out.println(getDirectionVector(inverseOfCandidate));
+		// System.out.println("#####################");
 
 		Vector3f directionVector_init = getDirectionVector(initMatrix);
 		Vector3f directionVector_candidate = getDirectionVector(candidate);
@@ -251,7 +259,8 @@ public class Slider extends Connectivity {
 		// .println(Direction6T.getDirectionOfTransformMatrix(candidate));
 		// System.out.println(Direction6T
 		// .getDirectionOfTransformMatrix(inverseOfCandidate));
-//		System.out.println("DirectionVectorDiff: " + dirDiff + ", " + dirDiff2);
+		// System.out.println("DirectionVectorDiff: " + dirDiff + ", " +
+		// dirDiff2);
 
 		if (directionVector_init.equals(directionVector_candidate))
 			;
@@ -303,7 +312,7 @@ public class Slider extends Connectivity {
 
 		return result;
 	}
-	
+
 	private Vector3f getRotationVector(Matrix4 candidate) {
 		Vector3f directionVector = getDirectionVector(candidate);
 		// System.out.println("DirectionVector: "+directionVector);
@@ -332,4 +341,5 @@ public class Slider extends Connectivity {
 		// System.out.println("Rotation Vector: "+rotationVector);
 		return rotationVector;
 	}
+
 }

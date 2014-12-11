@@ -142,8 +142,9 @@ public class LDrawStep extends LDrawContainer {
 		DispatchGroup stepDispatchGroup = null;
 		stepDispatchGroup = new DispatchGroup();
 
-		if (parentGroup != null)
+		if (parentGroup != null){
 			stepDispatchGroup.extendsFromParent(parentGroup);
+		}
 
 		Range testRange = new Range(range.getLocation(), range.length());
 		// Parse out the STEP command
@@ -194,6 +195,7 @@ public class LDrawStep extends LDrawContainer {
 					newDirective = commandClass.initWithLines(lines,
 							commandRange, stepDispatchGroup);
 				}
+				
 				if (newDirective instanceof LDrawCustomMetaCommand) {
 					if (lineIsStepName(currentLine)) {
 						stepName = ((LDrawCustomMetaCommand) newDirective)
@@ -213,12 +215,13 @@ public class LDrawStep extends LDrawContainer {
 							.equals("CCW")) {
 						stepDispatchGroup.setCCW(true);
 					}
+					lineIndex = commandRange.getMaxRange() + 1;
+					continue;
 				}
 
 				directives.add(insertIndex, newDirective);
 				insertIndex += 1;
 				lineIndex = commandRange.getMaxRange() + 1;
-
 			} else {
 				lineIndex += 1;
 			}

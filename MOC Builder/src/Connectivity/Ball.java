@@ -5,6 +5,10 @@ import Common.Matrix4;
 public class Ball extends Connectivity {
 	float[] flexAttributes;
 
+	public void apply(Ball newConn) {
+		this.type = newConn.gettype();
+	}
+
 	public float[] getflexAttributes() {
 		return flexAttributes;
 	}
@@ -66,4 +70,5 @@ public class Ball extends Connectivity {
 
 		return newTransform;
 	}
+
 }

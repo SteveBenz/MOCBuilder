@@ -18,6 +18,8 @@
 	<classpathentry kind="lib" path="lib/bricklink/opencsv-1.7.jar"/>
 	<classpathentry kind="lib" path="lib/bricklink/jackson-all-1.8.10.jar"/>
 	<classpathentry kind="lib" path="lib/ldd2ldr.jar"/>
+	<classpathentry kind="lib" path="lib/JBulletWOStack.jar"/>
+	<classpathentry kind="lib" path="lib/vecmath/vecmath.jar"/>
 	<classpathentry kind="lib" path="lib/gluegen-rt-natives-windows-amd64.jar"/>
 	<classpathentry kind="lib" path="lib/jogl-all-natives-windows-amd64.jar"/>
 	<classpathentry kind="lib" path="lib/swt_winX64.jar"/>

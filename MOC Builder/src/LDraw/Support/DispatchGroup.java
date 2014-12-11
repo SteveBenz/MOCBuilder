@@ -1,15 +1,13 @@
 package LDraw.Support;
 
 public class DispatchGroup {
-	private boolean isParentCCW = true;
 	private boolean isCCW = true;
 	private boolean isInvertedNext = false;
 	private boolean isInverted = false;
 	private boolean isReversed = false;
 
 	public void extendsFromParent(DispatchGroup parent) {
-		isParentCCW = parent.isCCW();
-
+		isCCW = parent.isCCW();
 		if (parent.isInvertedNext) {
 			isInverted = true;
 			parent.setInvertedNext(false);

@@ -10,6 +10,9 @@ import Common.Ray3;
 import Common.Vector3f;
 import Connectivity.Axle;
 import Connectivity.Ball;
+import Connectivity.CollisionBox;
+import Connectivity.CollisionCylinder;
+import Connectivity.CollisionSphere;
 import Connectivity.Connectivity;
 import Connectivity.Fixed;
 import Connectivity.Hinge;
@@ -72,10 +75,10 @@ public class DefaultConnectivityRenderer implements IConnectivityRenderer {
 						vertices[i][j].z);
 				gl2.glVertex3f(vertices[i + 1][j].x, vertices[i + 1][j].y,
 						vertices[i + 1][j].z);
-				gl2.glVertex3f(vertices[i+1][j + 1].x, vertices[i+1][j + 1].y,
-						vertices[i+1][j + 1].z);
-				gl2.glVertex3f(vertices[i][j + 1].x,
-						vertices[i ][j + 1].y, vertices[i ][j +1].z);
+				gl2.glVertex3f(vertices[i + 1][j + 1].x,
+						vertices[i + 1][j + 1].y, vertices[i + 1][j + 1].z);
+				gl2.glVertex3f(vertices[i][j + 1].x, vertices[i][j + 1].y,
+						vertices[i][j + 1].z);
 				gl2.glEnd();
 			}
 		}
@@ -93,17 +96,17 @@ public class DefaultConnectivityRenderer implements IConnectivityRenderer {
 		for (int i = 0; i < M; i++) {
 			for (int j = 0; j < N; j++) {
 				if (MatrixMath.V3RayIntersectsTriangle(ray, vertices[i][j],
-						vertices[i + 1][j], vertices[i+1][j + 1], distanceTemp,
-						null)) {
+						vertices[i + 1][j], vertices[i + 1][j + 1],
+						distanceTemp, null)) {
 
 					if (distance != null)
 						if (distanceTemp.get(0) < distance.get(0))
 							distance.put(0, distanceTemp.get(0));
 					isHitted = true;
 				}
-				if (MatrixMath.V3RayIntersectsTriangle(ray, vertices[i+1][j + 1],
-						vertices[i][j + 1], vertices[i][j], distanceTemp,
-						null)) {
+				if (MatrixMath.V3RayIntersectsTriangle(ray,
+						vertices[i + 1][j + 1], vertices[i][j + 1],
+						vertices[i][j], distanceTemp, null)) {
 					if (distance != null)
 						if (distanceTemp.get(0) < distance.get(0))
 							distance.put(0, distanceTemp.get(0));
@@ -136,6 +139,12 @@ public class DefaultConnectivityRenderer implements IConnectivityRenderer {
 			return new BallRenderer(camera, conn2);
 		} else if (conn2 instanceof Fixed) {
 			return new FixedRenderer(camera, conn2);
+		} else if (conn2 instanceof CollisionBox) {
+			return new CollisionBoxRenderer(camera, conn2);
+		} else if (conn2 instanceof CollisionSphere) {
+			return new CollisionSphereRenderer(camera, conn2);
+		} else if (conn2 instanceof CollisionCylinder) {
+			return new CollisionCylinderRenderer(camera, conn2);
 		}
 
 		return new DefaultConnectivityRenderer(camera, conn2);

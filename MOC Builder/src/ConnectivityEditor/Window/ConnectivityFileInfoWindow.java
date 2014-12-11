@@ -14,10 +14,10 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Tree;
 import org.eclipse.swt.widgets.TreeItem;
 
-import Builder.DirectiveSelectionManager;
 import Connectivity.Axle;
 import Connectivity.Ball;
-import Connectivity.CollisionBox;
+import Connectivity.CollisionConvexHull;
+import Connectivity.CollisionShape;
 import Connectivity.Connectivity;
 import Connectivity.Fixed;
 import Connectivity.Hinge;
@@ -27,8 +27,6 @@ import Connectivity.MatrixItem;
 import Connectivity.Slider;
 import ConnectivityEditor.Connectivity.AxleT;
 import ConnectivityEditor.Connectivity.FixedT;
-import LDraw.Files.LDrawStep;
-import LDraw.Support.LDrawDirective;
 import Notification.ILDrawSubscriber;
 import Notification.INotificationMessage;
 import Notification.NotificationCenter;
@@ -52,9 +50,13 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 				NotificationMessageT.ConnectivityDidRemoved);
 		NotificationCenter.getInstance().addSubscriber(this,
 				NotificationMessageT.ConnectivityDidChanged);
+		NotificationCenter.getInstance().addSubscriber(this,
+				NotificationMessageT.ConnectivityDidSelected);
 	}
 
 	private void drawTree() {
+		if (fileInfoTreeComponent.isDisposed())
+			return;
 		fileInfoTreeComponent.setVisible(false);
 		fileInfoTreeComponent.removeAll();
 		// connectivity
@@ -71,21 +73,25 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 				treeItem.setData(conn);
 
 			}
-		// Collision
-		TreeItem treeItem_Collision = new TreeItem(fileInfoTreeComponent,
-				SWT.NONE);
-		treeItem_Collision.setText("Collision");
-		if (cEditor.getWorkingPart() != null
-				&& cEditor.getWorkingPart().getCollisionBoxList() != null)
-			for (CollisionBox collisionBox : cEditor.getWorkingPart()
-					.getCollisionBoxList()) {
-				treeItem = new TreeItem(treeItem_Collision, SWT.NONE);
-				treeItem.setText(collisionBox.toString());
-				treeItem.setData(collisionBox);
-			}
+		if (RightPanel.isShowCollision) {
+			// Collision
+			TreeItem treeItem_Collision = new TreeItem(fileInfoTreeComponent,
+					SWT.NONE);
+			treeItem_Collision.setText("Collision");
+			if (cEditor.getWorkingPart() != null
+					&& cEditor.getWorkingPart().getCollisionShapeList() != null)
+				for (CollisionShape collisionShape : cEditor.getWorkingPart()
+						.getCollisionShapeList()) {
+					if (collisionShape instanceof CollisionConvexHull)
+						continue;
+					treeItem = new TreeItem(treeItem_Collision, SWT.NONE);
+					treeItem.setText(collisionShape.toString());
+					treeItem.setData(collisionShape);
+				}
+			treeItem_Collision.setExpanded(true);
+		}
 
 		treeItem_Connectivity.setExpanded(true);
-		treeItem_Collision.setExpanded(true);
 		fileInfoTreeComponent.setVisible(true);
 
 		setSelection();
@@ -97,6 +103,17 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 	@Override
 	public void receiveNotification(NotificationMessageT messageType,
 			INotificationMessage msg) {
+
+		if (messageType == NotificationMessageT.ConnectivityDidSelected) {
+			display.asyncExec(new Runnable() {
+
+				@Override
+				public void run() {
+					setSelection();
+				}
+			});
+			return;
+		}
 		if (isUpdateCompleted) {
 			isUpdateCompleted = false;
 			display.asyncExec(new Runnable() {
@@ -108,9 +125,6 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 						drawTree();
 					}
 					isUpdateCompleted = true;
-
-					NotificationCenter.getInstance().postNotification(
-							NotificationMessageT.NeedRedraw);
 				}
 			});
 		} else
@@ -135,7 +149,6 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 						e.y));
 				if (item == null) {
 					ConnectivitySelectionManager.getInstance().clearSelection();
-					fileInfoTreeComponent.setSelection(new TreeItem[0]);
 					GlobalFocusManagerForConnectivityEditor.getInstance()
 							.forceFocusToMainView();
 				}
@@ -195,12 +208,14 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 		Connectivity conn = null;
 
 		for (TreeItem item : parentItems) {
-			if (item.getData() == null)
-				continue;
-			else {
-				conn = (Connectivity) item.getData();
-				if (selected.contains(conn))
-					selectedItems.add(item);
+			for (TreeItem subItem : item.getItems()) {
+				if (subItem.getData() == null)
+					continue;
+				else {
+					conn = (Connectivity) subItem.getData();
+					if (selected.contains(conn))
+						selectedItems.add(subItem);
+				}
 			}
 		}
 

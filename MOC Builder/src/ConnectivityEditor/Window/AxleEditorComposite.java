@@ -11,12 +11,15 @@ import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 
+import Connectivity.Axle;
 import Connectivity.Connectivity;
 import ConnectivityEditor.Connectivity.AxleT;
 import ConnectivityEditor.Connectivity.ConnectivityGenerator;
 import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoWrapper;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
 
-public class AxleEditorComposite extends Composite {
+public class AxleEditorComposite extends ConnectivityEditorComposite {
 	private Combo combo_Length;
 	private Button btnCheck_StartCapped;
 	private Button btnCheck_EndCapped;
@@ -33,6 +36,16 @@ public class AxleEditorComposite extends Composite {
 	 */
 	public AxleEditorComposite(Composite parent, int style) {
 		super(parent, style);
+		init();
+	}
+
+	public AxleEditorComposite(Composite parent, int style, Connectivity conn) {
+		super(parent, style);
+		this.conn = conn;
+		init();
+	}
+
+	private void init() {
 		RowLayout rowLayout = new RowLayout(SWT.VERTICAL);
 		rowLayout.center = true;
 		setLayout(rowLayout);
@@ -58,10 +71,10 @@ public class AxleEditorComposite extends Composite {
 
 		combo_Type = new Combo(group, SWT.READ_ONLY);
 		combo_Type.setBounds(69, 10, 88, 23);
-		
+
 		for (AxleT type : AxleT.values())
 			combo_Type.add(type.toString());
-		
+
 		combo_Type.select(0);
 		combo_Type.pack();
 
@@ -89,8 +102,22 @@ public class AxleEditorComposite extends Composite {
 				handleGenerate();
 			}
 		});
-		btnGenerate.setText("Generate");
+		
+		if (this.conn == null) {
+			btnGenerate.setText("Generate");
+		} else {
+			Axle axle = (Axle) conn;
+			combo_Type.select(combo_Type.indexOf(AxleT.byValue(axle.gettype())
+					.toString()));
+			combo_Length
+					.select(combo_Length.indexOf("" + ((int) axle.getlength())));
+			btnCheck_EndCapped.setSelection(axle.getendCapped()==1);
+			btnCheck_StartCapped.setSelection(axle.getstartCapped()==1);
+			btnCheck_Grabbing.setSelection(axle.getgrabbing()==1);
+			btnCheck_RequireGrabbing.setSelection(axle.getrequireGrabbing()==1);
 
+			btnGenerate.setText("Apply");
+		}
 		this.pack();
 		this.layout();
 	}
@@ -115,7 +142,18 @@ public class AxleEditorComposite extends Composite {
 						isGrabbing, isRequireGrabbing);
 		newItem.setParent(ConnectivityEditor.getInstance().getWorkingPart());
 
-		ConnectivityEditorUndoWrapper.getInstance().addConnectivity(newItem);
+		if (conn == null)
+			ConnectivityEditorUndoWrapper.getInstance()
+					.addConnectivity(newItem);
+		else {
+			Axle newAxle = (Axle) newItem;
+			Axle axle = (Axle) conn;
+
+			axle.apply(newAxle);
+			
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.ConnectivityDidChanged);
+		}
 	}
 
 	@Override

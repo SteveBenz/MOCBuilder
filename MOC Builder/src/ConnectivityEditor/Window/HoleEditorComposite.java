@@ -23,9 +23,12 @@ import Connectivity.ICustom2DField;
 import Connectivity.MatrixItem;
 import ConnectivityEditor.Connectivity.ConnectivityGenerator;
 import ConnectivityEditor.Connectivity.HoleT;
+import ConnectivityEditor.Connectivity.StudT;
 import ConnectivityEditor.UndoRedo.ConnectivityEditorUndoWrapper;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
 
-public class HoleEditorComposite extends Composite {
+public class HoleEditorComposite extends ConnectivityEditorComposite {
 	private Table table;
 	private Combo combo_nColumns;
 	private Combo combo_nRows;
@@ -38,6 +41,10 @@ public class HoleEditorComposite extends Composite {
 	 */
 	public HoleEditorComposite(Composite parent, int style) {
 		super(parent, SWT.NONE);
+		init();
+	}
+
+	private void init() {
 		RowLayout rowLayout = new RowLayout(SWT.VERTICAL);
 		rowLayout.center = true;
 		setLayout(rowLayout);
@@ -55,12 +62,11 @@ public class HoleEditorComposite extends Composite {
 			}
 		});
 
-		
-
 		Label lblNewLabel = new Label(group, SWT.NONE);
 		lblNewLabel.setLocation(110, 10);
 		lblNewLabel.setSize(48, 15);
 		lblNewLabel.setText("# Rows");
+		lblNewLabel.pack();
 
 		combo_nRows = new Combo(group, SWT.READ_ONLY);
 		combo_nRows.setLocation(108, 32);
@@ -71,7 +77,6 @@ public class HoleEditorComposite extends Composite {
 				generateTableContents();
 			}
 		});
-		
 
 		Label lblColumn = new Label(group, SWT.NONE);
 		lblColumn.setBounds(10, 10, 73, 15);
@@ -82,12 +87,14 @@ public class HoleEditorComposite extends Composite {
 
 		for (int i = 1; i < 20; i++)
 			combo_nRows.add("" + i);
-		
+
 		combo_nRows.select(0);
 		combo_nColumns.select(0);
 		combo_nRows.pack();
 		combo_nColumns.pack();
-		
+
+		group.pack();
+
 		table = new Table(this, SWT.BORDER | SWT.FULL_SELECTION);
 		table.setHeaderVisible(false);
 		table.setLinesVisible(true);
@@ -97,15 +104,31 @@ public class HoleEditorComposite extends Composite {
 		btnGenerate.addSelectionListener(new SelectionAdapter() {
 			@Override
 			public void widgetSelected(SelectionEvent arg0) {
-				handleGenerateStud();
+				handleGenerateHole();
 			}
 		});
-		btnGenerate.setText("Generate");
+		if (this.conn == null) {
+			btnGenerate.setText("Generate");
+			generateTableContents();
+		} else {
+			combo_nColumns.select(((ICustom2DField) conn).getwidth() / 2 - 1);
+			combo_nRows.select(((ICustom2DField) conn).getheight() / 2 - 1);
 
-		generateTableContents();
+			combo_nColumns.setEnabled(false);
+			combo_nRows.setEnabled(false);
+
+			btnGenerate.setText("Apply");
+			generateTableContentsForModification();
+		}
 	}
 
-	protected void handleGenerateStud() {
+	public HoleEditorComposite(Composite parent, int style, Connectivity conn) {
+		super(parent, SWT.NONE);
+		this.conn = conn;
+		init();
+	}
+
+	protected void handleGenerateHole() {
 		int nColumns = Integer.parseInt(combo_nColumns.getText());
 		int nRows = Integer.parseInt(combo_nRows.getText());
 
@@ -113,22 +136,37 @@ public class HoleEditorComposite extends Composite {
 		for (int row = 0; row < nRows; row++) {
 			TableItem tableItem = table.getItem(row);
 			for (int column = 0; column < nColumns; column++) {
-				types[column][row] = HoleT.valueOf(((CCombo) tableItem.getData("" + column)).getText());				
+				types[column][row] = HoleT.valueOf(((CCombo) tableItem
+						.getData("" + column)).getText());
 			}
 		}
 
-		Connectivity newConn = ConnectivityGenerator.getInstance()
+		Connectivity newHole = ConnectivityGenerator.getInstance()
 				.generateHole(nColumns, nRows, types);
-		newConn.setParent(ConnectivityEditor.getInstance().getWorkingPart());
-		MatrixItem[][] matrixItmes = ((ICustom2DField) newConn).getMatrixItem();
+		newHole.setParent(ConnectivityEditor.getInstance().getWorkingPart());
+		MatrixItem[][] matrixItmes = ((ICustom2DField) newHole).getMatrixItem();
 		for (int column = 0; column < matrixItmes.length; column++)
 			for (int row = 0; row < matrixItmes[column].length; row++) {
-				matrixItmes[column][row].setParent(newConn);
+				matrixItmes[column][row].setParent(newHole);
 				matrixItmes[column][row].setColumnIndex(column);
 				matrixItmes[column][row].setRowIndex(row);
 			}
+		if (conn == null)
+			ConnectivityEditorUndoWrapper.getInstance()
+					.addConnectivity(newHole);
+		else {
+			MatrixItem[][] existingMatrixItems = ((ICustom2DField) conn)
+					.getMatrixItem();
+			matrixItmes = ((ICustom2DField) newHole).getMatrixItem();
+			for (int column = 0; column < matrixItmes.length; column++)
+				for (int row = 0; row < matrixItmes[column].length; row++) {
+					existingMatrixItems[column][row]
+							.setAltitude(matrixItmes[column][row].getAltitude());
+				}
 
-		ConnectivityEditorUndoWrapper.getInstance().addConnectivity(newConn);
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.ConnectivityDidChanged);
+		}
 	}
 
 	private void generateTableContents() {
@@ -151,7 +189,55 @@ public class HoleEditorComposite extends Composite {
 			final TableItem item = new TableItem(table, SWT.NULL);
 			for (int j = 0; j < nColumns; j++) {
 				CCombo combo = new CCombo(table, SWT.READ_ONLY);
-				for(HoleT type : HoleT.values())
+				for (HoleT type : HoleT.values())
+					combo.add(type.toString());
+				combo.select(0);
+				combo.pack();
+				TableEditor editor = new TableEditor(table);
+				editor.grabHorizontal = true;
+				editor.setEditor(combo, item, j);
+				item.setData("" + j, combo);
+			}
+			item.setData("nColumns", new Integer(nColumns));
+			item.addDisposeListener(new DisposeListener() {
+
+				@Override
+				public void widgetDisposed(DisposeEvent arg0) {
+					for (int i = 0; i < (Integer) (item.getData("nColumns")); i++) {
+						((CCombo) (item.getData("" + i))).dispose();
+					}
+				}
+			});
+		}
+		table.pack();
+		table.setRedraw(true);
+		table.setVisible(true);
+		table.redraw();
+		this.pack();
+		this.layout();
+	}
+
+	private void generateTableContentsForModification() {
+		table.setVisible(false);
+		table.setRedraw(false);
+
+		while (table.getColumnCount() > 0) {
+			table.getColumns()[0].dispose();
+		}
+		table.removeAll();
+
+		int nColumns = Integer.parseInt(combo_nColumns.getText());
+		int nRows = Integer.parseInt(combo_nRows.getText());
+
+		for (int j = 0; j < nColumns; j++) {
+			final TableColumn column = new TableColumn(table, SWT.NULL);
+			column.setWidth(80);
+		}
+		for (int i = 0; i < nRows; i++) {
+			final TableItem item = new TableItem(table, SWT.NULL);
+			for (int j = 0; j < nColumns; j++) {
+				CCombo combo = new CCombo(table, SWT.READ_ONLY);
+				for (HoleT type : HoleT.values())
 					combo.add(type.toString());
 				combo.select(0);
 				combo.pack();

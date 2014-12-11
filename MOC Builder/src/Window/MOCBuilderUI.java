@@ -176,7 +176,7 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 				}
 			});
 
-		// brickBuilder.openFile("j:/connectivity Test.ldr");
+//		 mocBuilder.openFile(System.getProperty("user.home")+"/untitled.ldr");
 
 		while (!shell.isDisposed()) {
 			if (!display.readAndDispatch())

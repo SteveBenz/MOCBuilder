@@ -11,6 +11,7 @@ import org.eclipse.swt.events.MouseListener;
 import org.eclipse.swt.events.MouseMoveListener;
 import org.eclipse.swt.events.MouseTrackListener;
 import org.eclipse.swt.events.MouseWheelListener;
+import org.eclipse.swt.widgets.Display;
 
 import BrickControlGuide.IGuideRenderer;
 import BrickControlGuide.RotationGuide;
@@ -217,7 +218,8 @@ public class ConnectivityEditorEventHandler implements MouseListener,
 			}
 			// init startPos to Move Brick
 			ConnectivityControlModeT.currentControlMode = ConnectivityControlModeT.ConnectivityControl_Direct;
-			startMoveWorldPos = connectivityRenderer.getHittedPos(camera, e.x, e.y);
+			startMoveWorldPos = connectivityRenderer.getHittedPos(camera, e.x,
+					e.y);
 			startMoveConnPos = new Vector3f(startMoveConn.getCurrentPos());
 		}
 
@@ -287,13 +289,13 @@ public class ConnectivityEditorEventHandler implements MouseListener,
 
 			Vector3f currentMoveWorldPos = new Vector3f(cEditor.getHittedPos(
 					e.x, e.y, true));
-			startMoveWorldPos = LDrawGridTypeT.getSnappedPos(
-					startMoveWorldPos, LDrawGridTypeT.Fine);
+			startMoveWorldPos = LDrawGridTypeT.getSnappedPos(startMoveWorldPos,
+					LDrawGridTypeT.Fine);
 
 			currentMoveWorldPos = LDrawGridTypeT.getSnappedPos(
 					currentMoveWorldPos, LDrawGridTypeT.Fine);
 
-			Vector3f moveByInWorld = currentMoveWorldPos.sub(startMoveWorldPos);			
+			Vector3f moveByInWorld = currentMoveWorldPos.sub(startMoveWorldPos);
 
 			if (moveByInWorld.length() > 0) {
 				startMoveConn.moveBy(moveByInWorld);
@@ -488,6 +490,11 @@ public class ConnectivityEditorEventHandler implements MouseListener,
 			return;
 
 		switch (function) {
+		case CloseWindow:
+			if (Display.getCurrent() != null)
+				if (Display.getCurrent().getActiveShell() != null)
+					Display.getCurrent().getActiveShell().dispose();
+			break;
 		case CancelSelection:
 			if (connectivitySelectionManager.isEmpty() == false)
 				connectivitySelectionManager.clearSelection();
@@ -542,7 +549,7 @@ public class ConnectivityEditorEventHandler implements MouseListener,
 			// false));
 
 			break;
-		case Delete: 
+		case Delete:
 			ConnectivityEditorUndoWrapper.getInstance()
 					.removeSelectedDirective();
 			GlobalFocusManagerForConnectivityEditor.getInstance()

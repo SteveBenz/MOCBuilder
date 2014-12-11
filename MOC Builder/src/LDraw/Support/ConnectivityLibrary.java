@@ -12,6 +12,9 @@ import Connectivity.Axle;
 import Connectivity.Ball;
 import Connectivity.BoundingAABB;
 import Connectivity.CollisionBox;
+import Connectivity.CollisionCylinder;
+import Connectivity.CollisionShape;
+import Connectivity.CollisionSphere;
 import Connectivity.Connectivity;
 import Connectivity.Connectivity.TYPE;
 import Connectivity.Custom2dFieldGenerator;
@@ -22,7 +25,7 @@ import Connectivity.Hole;
 import Connectivity.Rail;
 import Connectivity.Slider;
 import Connectivity.Stud;
-import ConnectivityEditor.Window.CollisionBoxGenerator;
+import ConnectivityEditor.Window.CollisionShapeGenerator;
 
 public class ConnectivityLibrary {
 
@@ -36,18 +39,18 @@ public class ConnectivityLibrary {
 		}
 	}
 
-	public final static String ConnectivityFilesPath = BuilderConfigurationManager.getDefaultDataDirectoryPath()
-			+ "Connectivity" + File.separator;
+	public final static String ConnectivityFilesPath = BuilderConfigurationManager
+			.getDefaultDataDirectoryPath() + "Connectivity" + File.separator;
 
 	HashMap<String, ArrayList<Connectivity>> connectivityCache;
-	HashMap<String, ArrayList<CollisionBox>> collisionBoxCache;
+	HashMap<String, ArrayList<CollisionShape>> collisionShapeCache;
 	HashMap<String, ArrayList<BoundingAABB>> boundingAABBCache;
 
 	private static ConnectivityLibrary _instance = null;
 
 	private ConnectivityLibrary() {
 		connectivityCache = new HashMap<String, ArrayList<Connectivity>>();
-		collisionBoxCache = new HashMap<String, ArrayList<CollisionBox>>();
+		collisionShapeCache = new HashMap<String, ArrayList<CollisionShape>>();
 		boundingAABBCache = new HashMap<String, ArrayList<BoundingAABB>>();
 		// loadAllConnectivity();
 	}
@@ -94,7 +97,7 @@ public class ConnectivityLibrary {
 
 		if (useCache == false) {
 			connectivityCache.remove(partNameWithoutExtension);
-			collisionBoxCache.remove(partNameWithoutExtension);
+			collisionShapeCache.remove(partNameWithoutExtension);
 			boundingAABBCache.remove(partNameWithoutExtension);
 		}
 
@@ -128,7 +131,7 @@ public class ConnectivityLibrary {
 		}
 
 		if (useConnExtractor == true && original == null
-				&& collisionBoxCache.containsKey(partName) == false) {
+				&& collisionShapeCache.containsKey(partName) == false) {
 			long t = System.currentTimeMillis();
 			Custom2dFieldGenerator.getInstance().getStudInfo(partName);
 			Custom2dFieldGenerator.getInstance().getHoleInfo(partName);
@@ -144,12 +147,11 @@ public class ConnectivityLibrary {
 		}
 
 		if (useConnExtractor
-				&& (collisionBoxCache.containsKey(partNameWithoutExtension) == false || collisionBoxCache
+				&& (collisionShapeCache.containsKey(partNameWithoutExtension) == false || collisionShapeCache
 						.get(partNameWithoutExtension).size() == 0))
-			collisionBoxCache.put(
-					partNameWithoutExtension,
-					CollisionBoxGenerator.getInstance().generateCollisionBox(
-							partName));
+			collisionShapeCache.put(partNameWithoutExtension,
+					CollisionShapeGenerator.getInstance()
+							.generateCollisionShape(partName));
 
 		if (original == null)
 			return new ArrayList<Connectivity>();
@@ -173,13 +175,13 @@ public class ConnectivityLibrary {
 		return copy;
 	}
 
-	public ArrayList<CollisionBox> getCollisionBox(String key) {
-		return getCollisionBox(key, true);
+	public ArrayList<CollisionShape> getCollisionShape(String key) {
+		return getCollisionShape(key, true);
 	}
 
-	public ArrayList<CollisionBox> getCollisionBox(String partName,
+	public ArrayList<CollisionShape> getCollisionShape(String partName,
 			boolean useCache) {
-		ArrayList<CollisionBox> retList = new ArrayList<CollisionBox>();
+		ArrayList<CollisionShape> retList = new ArrayList<CollisionShape>();
 
 		String partNameWithoutExtension = LDrawUtilities
 				.excludeExtensionFromPartName(partName);
@@ -187,11 +189,11 @@ public class ConnectivityLibrary {
 		if (useCache == false)
 			getConnectivity(partName, true, false);
 
-		if (collisionBoxCache.containsKey(partNameWithoutExtension))
-			for (CollisionBox cBox : collisionBoxCache
+		if (collisionShapeCache.containsKey(partNameWithoutExtension))
+			for (CollisionShape cShape : collisionShapeCache
 					.get(partNameWithoutExtension)) {
 				try {
-					retList.add((CollisionBox) cBox.clone());
+					retList.add((CollisionShape) cShape.clone());
 				} catch (CloneNotSupportedException e) {
 					// TODO Auto-generated catch block
 					e.printStackTrace();
@@ -222,7 +224,7 @@ public class ConnectivityLibrary {
 		String partNameWithoutExtension = LDrawUtilities
 				.excludeExtensionFromPartName(originalPartName);
 		ArrayList<Connectivity> connectivities;
-		ArrayList<CollisionBox> collisionBoxes;
+		ArrayList<CollisionShape> collisionShapes;
 		ArrayList<BoundingAABB> boundingAABBs;
 		Connectivity connectivity = null;
 		try {
@@ -232,6 +234,7 @@ public class ConnectivityLibrary {
 				if ("".equals(line))
 					continue;
 				lines = line.split(" ");
+				connectivity = null;
 				switch (types[Integer.parseInt(lines[0])]) {
 				case Comment:
 					continue;
@@ -268,22 +271,29 @@ public class ConnectivityLibrary {
 				case CollisionBox:
 					connectivity = new CollisionBox();
 					break;
+				case CollisionSphere:
+					connectivity = new CollisionSphere();
+					break;
+				case CollisionCylinder:
+					connectivity = new CollisionCylinder();
+					break;
 				case BoundingAABB:
 					connectivity = new BoundingAABB();
 					break;
 				}
+				if(connectivity==null)continue;
 
 				connectivity.parseString(lines);
 
-				if (connectivity instanceof CollisionBox) {
-					collisionBoxes = collisionBoxCache
+				if (connectivity instanceof CollisionShape) {
+					collisionShapes = collisionShapeCache
 							.get(partNameWithoutExtension);
-					if (collisionBoxes == null) {
-						collisionBoxes = new ArrayList<CollisionBox>();
-						collisionBoxCache.put(partNameWithoutExtension,
-								collisionBoxes);
+					if (collisionShapes == null) {
+						collisionShapes = new ArrayList<CollisionShape>();
+						collisionShapeCache.put(partNameWithoutExtension,
+								collisionShapes);
 					}
-					collisionBoxes.add((CollisionBox) connectivity);
+					collisionShapes.add((CollisionShape) connectivity);
 				} else if (connectivity instanceof BoundingAABB) {
 					boundingAABBs = boundingAABBCache
 							.get(partNameWithoutExtension);

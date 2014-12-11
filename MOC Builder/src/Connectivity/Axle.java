@@ -18,6 +18,15 @@ public class Axle extends Connectivity {
 
 	public Axle() {
 	}
+	
+	public void apply(Axle other){
+		this.type = other.gettype();
+		this.startCapped = other.getstartCapped();
+		this.endCapped = other.getendCapped();
+		this.length = other.getlength();
+		this.grabbing = other.getgrabbing();
+		this.requireGrabbing = other.getrequireGrabbing();
+	}
 
 	public int getstartCapped() {
 		return startCapped;

@@ -1,6 +1,7 @@
 package Notification;
 
 public enum NotificationMessageT {
+	TakeScreenShot,
 	NeedRedraw, 
 	LDrawFileActiveModelDidChanged, 
 	LDrawModelDidChanged, 

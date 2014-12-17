@@ -55,7 +55,14 @@ public class ShortcutKeyManager {
 		LSynthAddCommand("LSynth-Add Command"), LSynthSynthesize(
 				"LSynth-Synthesize"),
 		// Comment
-		CommentAdd("Add a New Comment")
+		CommentAdd("Add a New Comment"),
+		
+		//Camera Pos
+		CameraPosInsert("Insert A New Camera Pos"),
+		OverwirteCameraPos("Overwrite the Camera Pos"),
+		
+		ScreenShot("Screenshot"),
+		ScreenShotGenerate("Generate Screenshots"),
 
 		;
 

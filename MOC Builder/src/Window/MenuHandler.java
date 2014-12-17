@@ -538,7 +538,7 @@ public class MenuHandler implements ILDrawSubscriber {
 		messageBox.setText("About MOC Builder");
 		messageBox.setMessage("MOC Builder\r\n\r\n"
 				+ "Version: Public Release 1.04\r\n"
-				+ "Build id: 20141201-1600_kr");
+				+ "Build id: 20141211-1600_kr");
 
 		if (!SWT.getPlatform().equals("cocoa")) {
 			help_about = new MenuItem(menu_help, SWT.NONE);

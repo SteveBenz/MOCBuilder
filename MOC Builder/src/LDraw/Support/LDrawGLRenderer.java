@@ -68,7 +68,7 @@ import Renderer.LDrawShaderRenderer;
  * @since 2014-03-17
  * 
  */
-public class LDrawGLRenderer implements LDrawColorable{
+public class LDrawGLRenderer implements LDrawColorable {
 
 	public static final float SIMPLIFICATION_THRESHOLD = 0.3f; // seconds
 
@@ -293,10 +293,10 @@ public class LDrawGLRenderer implements LDrawColorable{
 	public void prepareOpenGL(GL2 gl2) {
 		gl2.glEnable(GL2.GL_DEPTH_TEST);
 		gl2.glEnable(GL2.GL_BLEND);
-		
+
 		gl2.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 		gl2.glEnable(GL2.GL_MULTISAMPLE); // antialiasing
-		
+
 		gl2.glEnable(GL2.GL_TEXTURE_2D);
 		gl2.glEnable(GL2.GL_TEXTURE_GEN_S);
 		gl2.glEnable(GL2.GL_TEXTURE_GEN_T);
@@ -322,6 +322,12 @@ public class LDrawGLRenderer implements LDrawColorable{
 		gl2.glLoadIdentity();
 		gl2.glRotatef(180, 1, 0, 0); // convert to standard, upside-down LDraw
 										// orientation.
+		FloatBuffer specular = FloatBuffer.allocate(4);
+		specular.put(new float[] { 0.0f, 0.0f, 0.0f, 1.0f });
+		float shininess = 64.0f;
+
+		gl2.glMaterialfv(GL2.GL_FRONT_AND_BACK, GL2.GL_SPECULAR, specular);
+		gl2.glMaterialf(GL2.GL_FRONT_AND_BACK, GL2.GL_SHININESS, shininess);
 
 		gl2.glShadeModel(GL2.GL_SMOOTH);
 		gl2.glEnable(GL2.GL_NORMALIZE);
@@ -333,7 +339,7 @@ public class LDrawGLRenderer implements LDrawColorable{
 		// The overall scene has ambient light to make the lighting less harsh.
 		// But
 		// too much ambient light makes everything washed out.
-		float lightModelAmbient[] = { 0.20f, 0.20f, 0.20f, 1.0f };
+		float lightModelAmbient[] = { 0.30f, 0.30f, 0.30f, 0.0f };
 
 		gl2.glLightModelf(GL2.GL_LIGHT_MODEL_TWO_SIDE, GL2.GL_FALSE);
 		gl2.glLightModelfv(GL2.GL_LIGHT_MODEL_AMBIENT,
@@ -346,12 +352,12 @@ public class LDrawGLRenderer implements LDrawColorable{
 		// and
 		// another pointing opposite to it (LIGHT1). The second light will
 		// illuminate any inverted normals or backwards polygons.
-		float position0[] = { 0f, 0.5f, 1f, 1.0f };
-		float position1[] = { 0f, -0.5f, -1f, 1.0f };
+		float position0[] = { 0f, 0.0f, 1f, 0.0f };
+		float position1[] = { 0f, 0.0f, -1f, 0.0f };
 
 		// Lessening the diffuseness also makes lighting less extreme.
 		float light0Ambient[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-		float light0Diffuse[] = { 1f, 1f, 1f, 1.0f };
+		float light0Diffuse[] = { 0.8f, 0.8f, 0.8f, 1.0f };
 		float light0Specular[] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
 		// normal forward light
@@ -402,7 +408,7 @@ public class LDrawGLRenderer implements LDrawColorable{
 	// ==============================================================================
 	public LDrawShaderRenderer ren;
 
-	private boolean useWireFrame=false;
+	private boolean useWireFrame = false;
 
 	public void draw(GL2 gl2) {
 		// Make lines look a little nicer; Max width 1.0; 0.5 at 100% zoom
@@ -422,16 +428,17 @@ public class LDrawGLRenderer implements LDrawColorable{
 		gl2.glEnable(GL2.GL_DEPTH_TEST);
 		gl2.glDepthMask(true);
 		gl2.glDisable(GL2.GL_BLEND);
+//		 gl2.glEnable(GL2.GL_CULL_FACE);
 		ren.drawTransparent = false;
 		fileBeingDrawn.drawSelf(gl2, ren);
-		
-//		gl2.glDisable(GL2.GL_CULL_FACE);
+
+//		 gl2.glDisable(GL2.GL_CULL_FACE);
 		gl2.glEnable(GL2.GL_BLEND);
 		gl2.glDepthMask(false);
 		gl2.glBlendFunc(GL2.GL_SRC_ALPHA, GL2.GL_ONE_MINUS_SRC_ALPHA);
 		ren.drawTransparent = true;
 		fileBeingDrawn.drawSelf(gl2, ren);
-		
+
 		gl2.glEnable(GL2.GL_DEPTH_TEST);
 		gl2.glDepthMask(true);
 		gl2.glEnable(GL2.GL_BLEND);
@@ -916,21 +923,21 @@ public class LDrawGLRenderer implements LDrawColorable{
 		}
 
 		// Register for important notifications.
-//		NotificationCenter notificationCenter = NotificationCenter
-//				.getInstance();
-//		notificationCenter.removeSubscriber(this,
-//				NotificationMessageT.LDrawDirectiveDidChange);
-//		notificationCenter.removeSubscriber(this,
-//				NotificationMessageT.LDrawFileActiveModelDidChange);
-//		notificationCenter.removeSubscriber(this,
-//				NotificationMessageT.LDrawModelRotationCenterDidChange);
-//
-//		notificationCenter.addSubscriber(this,
-//				NotificationMessageT.LDrawDirectiveDidChange);
-//		notificationCenter.addSubscriber(this,
-//				NotificationMessageT.LDrawFileActiveModelDidChange);
-//		notificationCenter.addSubscriber(this,
-//				NotificationMessageT.LDrawModelRotationCenterDidChange);
+		// NotificationCenter notificationCenter = NotificationCenter
+		// .getInstance();
+		// notificationCenter.removeSubscriber(this,
+		// NotificationMessageT.LDrawDirectiveDidChange);
+		// notificationCenter.removeSubscriber(this,
+		// NotificationMessageT.LDrawFileActiveModelDidChange);
+		// notificationCenter.removeSubscriber(this,
+		// NotificationMessageT.LDrawModelRotationCenterDidChange);
+		//
+		// notificationCenter.addSubscriber(this,
+		// NotificationMessageT.LDrawDirectiveDidChange);
+		// notificationCenter.addSubscriber(this,
+		// NotificationMessageT.LDrawFileActiveModelDidChange);
+		// notificationCenter.addSubscriber(this,
+		// NotificationMessageT.LDrawModelRotationCenterDidChange);
 
 		updateRotationCenter();
 	}
@@ -2708,19 +2715,19 @@ public class LDrawGLRenderer implements LDrawColorable{
 
 	}// end modelPointForPoint:depthReferencePoint:
 
-//	@Override
-//	public void receiveNotification(NotificationMessageT notificationType,
-//			INotificationMessage msg) {
-//		switch (notificationType) {
-//		case LDrawDirectiveDidChange:
-//		case LDrawFileActiveModelDidChange:
-//		case LDrawModelRotationCenterDidChange:
-//			displayNeedsUpdating();
-//			break;
-//		default:
-//			break;
-//		}
-//	}
+	// @Override
+	// public void receiveNotification(NotificationMessageT notificationType,
+	// INotificationMessage msg) {
+	// switch (notificationType) {
+	// case LDrawDirectiveDidChange:
+	// case LDrawFileActiveModelDidChange:
+	// case LDrawModelRotationCenterDidChange:
+	// displayNeedsUpdating();
+	// break;
+	// default:
+	// break;
+	// }
+	// }
 
 	public boolean isReadyToUse() {
 		return this.isReadyToUse;

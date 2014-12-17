@@ -54,7 +54,7 @@ public class LDrawMPDModel extends LDrawModel {
 	/**
 	 * @uml.property name="modelName"
 	 */
-	String modelName="UntitledModel";
+	String modelName = "UntitledModel";
 
 	// ---------- model
 	// ---------------------------------------------------[static]--
@@ -67,7 +67,7 @@ public class LDrawMPDModel extends LDrawModel {
 		String name = null;
 
 		// Set the spec-compliant model name with extension
-		name = "UntitledModel";		
+		name = "UntitledModel";
 		newModel.setModelDisplayName(name);
 
 		return newModel;
@@ -136,10 +136,10 @@ public class LDrawMPDModel extends LDrawModel {
 		} else {
 			nonMPDRange = range;
 		}
-		
+
 		// Create a basic model.
 		super.initWithLines(lines, nonMPDRange, parentGroup);
-		
+
 		// parses model into header and steps.
 
 		// If it wasn't MPD, we still need a model name. We can get that via the
@@ -149,7 +149,8 @@ public class LDrawMPDModel extends LDrawModel {
 		}
 
 		// And now set the MPD-specific attributes.
-		setModelName(mpdSubmodelName);		
+		setModelName(mpdSubmodelName);
+		setFileName(mpdSubmodelName);
 		return this;
 
 	}// end initWithLines:inRange:
@@ -166,7 +167,8 @@ public class LDrawMPDModel extends LDrawModel {
 		boolean isMPDModel = false;
 		String currentLine = null;
 		Range testRange = new Range(index, maxIndex - index + 1);
-		Range modelRange = new Range(testRange.getLocation(), testRange.length());
+		Range modelRange = new Range(testRange.getLocation(),
+				testRange.length());
 		int counter = 0;
 		int modelEndIndex = 0;
 
@@ -188,11 +190,10 @@ public class LDrawMPDModel extends LDrawModel {
 						.getMaxRange(); counter++) {
 					currentLine = lines.get(counter);
 
-//					if (lineIsMPDModelEnd(currentLine)) {
-//						modelEndIndex = counter + 1;
-//						break;
-//					} else 
-					if (lineIsMPDModelStart(currentLine, null)) {
+					if (lineIsMPDModelEnd(currentLine)) {
+						modelEndIndex = counter;
+						break;
+					} else if (lineIsMPDModelStart(currentLine, null)) {
 						modelEndIndex = counter - 1;
 						break;
 					}
@@ -201,7 +202,8 @@ public class LDrawMPDModel extends LDrawModel {
 						- testRange.getLocation() + 1);
 			} else {
 				// Non-MPD models just go to the end of the file.
-				modelRange = new Range(testRange.getLocation(), testRange.length());
+				modelRange = new Range(testRange.getLocation(),
+						testRange.length());
 			}
 		}
 
@@ -233,13 +235,12 @@ public class LDrawMPDModel extends LDrawModel {
 		// model text
 		// ....
 		// 0 falseFILE
-		written = written.concat(String.format(Locale.US,"0 %s %s%s",
+		written = written.concat(String.format(Locale.US, "0 %s %s%s",
 				LDrawKeywords.LDRAW_MPD_SUBMODEL_START, modelName(), CRLF));
-		written = written.concat(String.format(Locale.US,"%s%s", super.write(), CRLF));
-		written = written.concat(String.format(Locale.US,"0 %s",
+		written = written.concat(String.format(Locale.US, "%s%s",
+				super.write(), CRLF));
+		written = written.concat(String.format(Locale.US, "0 %s",
 				LDrawKeywords.LDRAW_MPD_SUBMODEL_END));
-		
-		
 
 		return written;
 
@@ -306,7 +307,7 @@ public class LDrawMPDModel extends LDrawModel {
 		File f = new File(modelName);
 		String filename = f.getName();
 		if (filename.contains(".")) {
-			return  filename.substring(0, filename.indexOf("."));			
+			return filename.substring(0, filename.indexOf("."));
 		} else
 			return modelName;
 	}// end modelDisplayName
@@ -433,10 +434,10 @@ public class LDrawMPDModel extends LDrawModel {
 			// rules
 			// for parsing file references (type 1 lines)
 			if (strTokenizer.hasMoreTokens() == false)
-				return false;
+				return true;
 			modelNamePtr.append(strTokenizer.nextToken());
 			while (strTokenizer.hasMoreTokens()) {
-				modelNamePtr.append(" "+strTokenizer.nextToken());				
+				modelNamePtr.append(" " + strTokenizer.nextToken());
 			}
 		}
 

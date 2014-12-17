@@ -1,0 +1,1230 @@
+package Window;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map.Entry;
+
+import org.eclipse.swt.SWT;
+import org.eclipse.swt.events.KeyEvent;
+import org.eclipse.swt.events.KeyListener;
+import org.eclipse.swt.events.MouseEvent;
+import org.eclipse.swt.events.MouseListener;
+import org.eclipse.swt.events.MouseMoveListener;
+import org.eclipse.swt.events.MouseTrackListener;
+import org.eclipse.swt.events.MouseWheelListener;
+import org.eclipse.swt.widgets.Display;
+
+import BrickControlGuide.BrickMovementGuideRenderer;
+import BrickControlGuide.IGuideRenderer;
+import BrickControlGuide.RotationGuide;
+import Builder.BuilderConfigurationManager;
+import Builder.CameraMoveShortCutManager;
+import Builder.CopyNPasteManager;
+import Builder.DirectiveGroupForTransform;
+import Builder.DirectiveSelectionManager;
+import Builder.MainCamera;
+import Builder.MouseControlMode;
+import Builder.MouseControlMode.MouseControlModeT;
+import Builder.ShortcutKeyManager;
+import Builder.ShortcutKeyManager.ShortcutKeyT;
+import Command.CameraTransformCommand;
+import Command.LDrawColor;
+import Command.LDrawLSynth;
+import Command.LDrawPart;
+import Command.PartTypeT;
+import Common.Box2;
+import Common.Matrix4;
+import Common.Vector2f;
+import Common.Vector3f;
+import Connectivity.ConnectivityTestResult;
+import Connectivity.ConnectivityTestResultT;
+import Connectivity.Direction6T;
+import Connectivity.GlobalConnectivityManager;
+import Connectivity.IConnectivity;
+import Connectivity.MatrixItem;
+import ConnectivityEditor.Window.ConnectivityEditorUI;
+import Grouping.GroupingManager;
+import LDraw.Support.ColorLibrary;
+import LDraw.Support.LDrawDirective;
+import LDraw.Support.LDrawMetaCommand;
+import LDraw.Support.MatrixMath;
+import Notification.LDrawColorSelected;
+import Notification.LDrawDirectiveDidChanged;
+import Notification.NotificationCenter;
+import Notification.NotificationMessageT;
+import OtherTools.PartReplaceDlg;
+import OtherTools.ScreenShotGenerator;
+import OtherTools.Syringe;
+import Resource.SoundEffectManager;
+import Resource.SoundEffectT;
+import UndoRedo.LDrawUndoRedoManager;
+import UndoRedo.MOCBuilderUndoWrapper;
+
+public class BuilderEventHandler implements MouseListener, MouseTrackListener,
+		MouseMoveListener, MouseWheelListener, KeyListener {
+
+	@Override
+	public void mouseScrolled(MouseEvent e) {
+		camera.zoom(e);
+		directiveSelectionManager.updateScreenProjectionVerticesMapAll();
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedRedraw);
+	}
+
+	private boolean isDragStarted = false;
+	private Vector2f startDragMousePos = new Vector2f();
+
+	@Override
+	public void mouseMove(MouseEvent e) {
+		GlobalMousePosition.getInstance().setPos(e.x, e.y);
+
+		int mouseButtonMask = e.stateMask
+				& (SWT.BUTTON1 | SWT.BUTTON2 | SWT.BUTTON3);
+		if (mouseButtonMask == 0)
+			handleMouseMove(e);
+		else if (Syringe.getInstance().isActivated() == false
+				|| MouseControlMode.getCurrentMode() != MouseControlModeT.Seletion) {
+			if (isDragStarted == false) {
+				if (mouseButtonMask == SWT.BUTTON1)
+					handleMouseLeftButtonDragStart(e);
+				else if (mouseButtonMask == SWT.BUTTON2)
+					handleMouseWheelButtonDragStart(e);
+				else if (mouseButtonMask == SWT.BUTTON3)
+					handleMouseRightButtonDragStart(e);
+				isDragStarted = true;
+			}
+
+			if (mouseButtonMask == SWT.BUTTON1)
+				handleMouseLeftButtonDragMove(e);
+			else if (mouseButtonMask == SWT.BUTTON2)
+				handleMouseWheelButtonDrag(e);
+			else if (mouseButtonMask == SWT.BUTTON3)
+				handleMouseRightButtonDrag(e);
+		}
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedRedraw);
+	}
+
+	private boolean isDoubleClick = false;
+
+	@Override
+	public void mouseDoubleClick(MouseEvent e) {
+		isDoubleClick = true;
+		LDrawPart selectedPart = builder.getHittedPart(e.x, e.y, false);
+		if (selectedPart == null)
+			return;
+
+		LDrawDirective enclosingDirective = selectedPart.enclosingDirective();
+
+		directiveSelectionManager.clearSelection();
+		if (enclosingDirective instanceof LDrawLSynth) {
+			for (LDrawDirective directive : ((LDrawLSynth) enclosingDirective)
+					.subdirectives())
+				directiveSelectionManager.addDirectiveToSelection(directive);
+		} else
+			handleMouseWheelButtonClicked(e);
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedRedraw);
+	}
+
+	private void handleMouseWheelButtonClicked(MouseEvent e) {
+		LDrawPart selectedPart = builder.getHittedPart(e.x, e.y, false);
+
+		if (selectedPart != null) {
+			if ((e.stateMask & SWT.SHIFT) == 0)
+				directiveSelectionManager.clearSelection();
+			for (LDrawPart part : GlobalConnectivityManager.getInstance()
+					.getConnectedPart(selectedPart, null, null, true))
+				directiveSelectionManager.addDirectiveToSelection(part);
+		}
+	}
+
+	@Override
+	public void mouseDown(MouseEvent e) {
+		isDragStarted = false;
+		startDragMousePos.setX(e.x);
+		startDragMousePos.setY(e.y);
+	}
+
+	@Override
+	public void mouseUp(MouseEvent e) {
+		// handle dragDrop, click
+		int mouseButtonMask = e.stateMask
+				& (SWT.BUTTON1 | SWT.BUTTON2 | SWT.BUTTON3);
+		if (isDragStarted == true) { // handle dragdrop
+			if (mouseButtonMask == 0) {
+				// nothing
+			} else if (Syringe.getInstance().isActivated() == false) {
+				if (mouseButtonMask == SWT.BUTTON1)
+					handleMouseLeftButtonDragDrop(e);
+				else if (mouseButtonMask == SWT.BUTTON2)
+					handleMouseWheelButtonDragDrop(e);
+				else if (mouseButtonMask == SWT.BUTTON3)
+					handleMouseRightButtonDragDrop(e);
+			}
+		} else if (isDoubleClick == false
+				&& (MatrixMath.compareFloat(startDragMousePos.getX(), e.x) == 0 && MatrixMath
+						.compareFloat(startDragMousePos.getY(), e.y) == 0)) {// handleClick
+			if (mouseButtonMask == SWT.BUTTON1) {
+				if ((e.stateMask & SWT.ALT) != 0)
+					handleMouseWheelButtonClicked(e);
+				else
+					handleMouseLeftButtonClicked(e);
+			} else if (mouseButtonMask == SWT.BUTTON2)
+				handleMouseWheelButtonClicked(e);
+			else if (mouseButtonMask == SWT.BUTTON3)
+				handleMouseRightButtonClicked(e);
+		} else {// double click
+				// release isDoubleClick.
+				// double click is handled by the method
+				// mouseDoubleClick(MouseEvent e);
+			isDoubleClick = false;
+		}
+
+		isDragStarted = false;
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedRedraw);
+	}
+
+	@Override
+	public void mouseEnter(MouseEvent e) {
+
+		// GLCanvas canvas = ((GLCanvas) e.widget);
+		// canvas.setFocus();
+	}
+
+	@Override
+	public void mouseExit(MouseEvent e) {
+		GlobalMousePosition.getInstance().setPos(400, 400);
+	}
+
+	@Override
+	public void mouseHover(MouseEvent e) {
+	}
+
+	private MOCBuilder builder = null;
+	private MainCamera camera = null;
+	private DirectiveSelectionManager directiveSelectionManager = null;
+	private BuilderConfigurationManager configurationManager = null;
+	private BrickMovementGuideRenderer brickMovementGuideRenderer;
+
+	private Vector2f startMoveMousePos = null;
+	private Vector3f startMoveWorldPos = null;
+	private Vector3f startMovePartPos = null;
+	private LDrawPart startMovePart = null;
+
+	public BuilderEventHandler(MOCBuilder builder) {
+		this.builder = builder;
+		directiveSelectionManager = DirectiveSelectionManager.getInstance();
+		camera = builder.getCamera();
+		configurationManager = BuilderConfigurationManager.getInstance();
+		brickMovementGuideRenderer = builder.getBrickMovementGuideRenderer();
+	}
+
+	private void handleMouseMove(MouseEvent e) {
+		LDrawPart selectedPart = builder.getHittedPart(e.x, e.y, false);
+		GlobalBoundingBoxRenderer.getInstance().setPointingPart(selectedPart);
+	}
+
+	private void handleMouseLeftButtonDragStart(MouseEvent e) {
+		// System.out.println("handleMouseLeftButtonDragStart");
+
+		// handle Camera Panning
+		if (MouseControlMode.getCurrentMode() == MouseControlModeT.MoveCamera) {
+			camera.startPan(e.x, e.y);
+			return;
+		} else if (MouseControlMode.getCurrentMode() == MouseControlModeT.RotateCamera) {
+			camera.startRotate(e.x, e.y);
+			return;
+		}
+
+		// handle Selection by Drag
+		LDrawPart pointingBrick = builder.getHittedPart(e.x, e.y, false);
+		IGuideRenderer selectedAxisGuide = brickMovementGuideRenderer
+				.getHittedAxisArrow(e.x, e.y);
+
+		if (pointingBrick == null && selectedAxisGuide == null) {
+			builder.getBrickSelectionInfoRenderer().setOrigin(
+					new Vector2f(e.x, e.y));
+			builder.getBrickSelectionInfoRenderer().isVisible(true);
+			return;
+		}
+
+		// handle brick movement
+		startMovePart = pointingBrick;
+		// is Pointing a guide mark
+		if (selectedAxisGuide != null
+				&& (pointingBrick == null || selectedAxisGuide
+						.getLastHittedDistance() < builder
+						.getLastHittedDistance())) {// guiding mark is
+			// pressed
+			brickMovementGuideRenderer.axisSelectedType(selectedAxisGuide);
+			startMoveMousePos = new Vector2f(e.x, e.y);
+			startMoveWorldPos = camera.screenToWorldXZ(e.x, e.y, 0);
+			startMoveWorldPos.y = camera.screenToWorldXY(e.x, e.y, 0).y;
+			BrickControlModeT.currentControlMode = BrickControlModeT.BrickControl_Guide;
+			boolean isRotationGuide = false;
+
+			if (selectedAxisGuide instanceof RotationGuide)
+				isRotationGuide = true;
+
+			IConnectivity conn = selectedAxisGuide.getCenterConnectivity();
+			if (conn == null) {
+				ArrayList<LDrawPart> tempPartList = new ArrayList<LDrawPart>();
+				for (LDrawDirective directive : directiveSelectionManager
+						.getSelectedDirectiveList()) {
+					if (directive instanceof LDrawPart == false)
+						continue;
+					for (LDrawPart subPart : GlobalConnectivityManager
+							.getInstance().getConnectedPart(
+									(LDrawPart) directive, conn,
+									selectedAxisGuide.getAxisDirectionVector(),
+									isRotationGuide)) {
+						if (tempPartList.contains(subPart) == false
+								&& directiveSelectionManager
+										.containsInSelection(directive) == false)
+							tempPartList.add(subPart);
+					}
+				}
+				for (LDrawPart part : tempPartList)
+					directiveSelectionManager.addDirectiveToSelection(part);
+			} else {
+				if (directiveSelectionManager.isEmpty() == false) {
+					LDrawDirective selectedDirective = directiveSelectionManager
+							.getSelectedDirectiveList().get(0);
+
+					if (selectedDirective instanceof LDrawPart)
+						for (LDrawPart part : GlobalConnectivityManager
+								.getInstance().getConnectedPart(
+										(LDrawPart) selectedDirective,
+										conn,
+										selectedAxisGuide
+												.getAxisDirectionVector(),
+										isRotationGuide)) {
+							if (directiveSelectionManager
+									.containsInSelection(part) == false) {
+								directiveSelectionManager
+										.addDirectiveToSelection(part);
+							}
+						}
+				}
+			}
+		} else if (pointingBrick != null) {// a brick is pointing
+			if (directiveSelectionManager.containsInSelection(startMovePart) == false) {
+				startMovePart.setSelected(true);
+				startMovePart.isDraggingPart(true);
+			}
+
+			if (pointingBrick.getConnectivityMatrixItemList() == null)
+				builder.getMetaInfoRenderer().setShowBaseplate(false);
+			// init startPos to Move Brick
+			BrickControlModeT.currentControlMode = BrickControlModeT.BrickControl_Direct;
+			startMoveWorldPos = builder.getHittedPos(e.x, e.y, false);
+			startMovePartPos = startMovePart.position();
+
+		}
+
+		if (pointingBrick != null) {
+			directiveSelectionManager.updateStartMoveTransformMatrixMap();
+		}
+	}
+
+	private void handleMouseLeftButtonDragDrop(MouseEvent e) {
+		// System.out.println("handleMouseLeftButtonDragDrop");
+		switch (BrickControlModeT.currentControlMode) {
+		case BrickSelectingDrag:
+			if (directiveSelectionManager.isEmpty())
+				BrickControlModeT.currentControlMode = BrickControlModeT.None;
+			else
+				BrickControlModeT.currentControlMode = BrickControlModeT.BrickControl;
+			builder.getBrickSelectionInfoRenderer().isVisible(false);
+			handleBrickControlGuideDisplay(true);
+			break;
+		case BrickControl_Direct:
+			handleChangePartsTransform();
+			directiveSelectionManager.updateStartMoveTransformMatrixMap();
+
+			if (directiveSelectionManager
+					.isTheOnlySelectedDirective(startMovePart)) {
+				ConnectivityTestResult testResult = GlobalConnectivityManager
+						.getInstance().isConnectable(startMovePart);
+				if (testResult.getResultType() != ConnectivityTestResultT.False) {
+					// brickSelectionManager
+					// .removePartFromSelection(startMovePart);
+					BrickControlModeT.currentControlMode = BrickControlModeT.None;
+					if (configurationManager.isTurnOffSound() == false)
+						if (testResult.getResultType() != ConnectivityTestResultT.False)
+							SoundEffectManager.getInstance().playSoundEffect(
+									SoundEffectT.ConnectingSuccess);
+				} else {
+					System.out.println(testResult.getMsg());
+					if (configurationManager.isTurnOffSound() == false)
+						SoundEffectManager.getInstance().playSoundEffect(
+								SoundEffectT.ConnectingFail);
+				}
+			} else {
+				if (directiveSelectionManager.isAllSelectedPartConnectible()) {
+					// brickSelectionManager.clearSelection();
+					if (configurationManager.isTurnOffSound() == false)
+						SoundEffectManager.getInstance().playSoundEffect(
+								SoundEffectT.ConnectingSuccess);
+				} else {
+					if (configurationManager.isTurnOffSound() == false)
+						SoundEffectManager.getInstance().playSoundEffect(
+								SoundEffectT.ConnectingFail);
+				}
+			}
+			break;
+		case BrickControl_Guide:
+			handleChangePartsTransform();
+			if (brickMovementGuideRenderer.getSelectedGuide() != null) {
+				if (brickMovementGuideRenderer.getSelectedGuide()
+						.getCenterConnectivity() != null) {
+					LDrawPart part = null;
+					part = brickMovementGuideRenderer.getSelectedGuide()
+							.getCenterConnectivity().getConnectivity()
+							.getParent();
+					directiveSelectionManager.clearSelection();
+					directiveSelectionManager.addDirectiveToSelection(part);
+					handleBrickControlGuideDisplay(false);
+				}
+			}
+			brickMovementGuideRenderer.axisSelectedType(null);
+			break;
+		default:
+			break;
+		}
+
+		if (directiveSelectionManager.isEmpty() == true)
+			builder.getMetaInfoRenderer().setShowBaseplate(
+					BuilderConfigurationManager.getInstance()
+							.isUseDefaultBaseplate());
+
+		BrickControlModeT.currentControlMode = BrickControlModeT.None;
+	}
+
+	private void handleMouseLeftButtonDragMove(MouseEvent e) {
+		if (MouseControlMode.getCurrentMode() == MouseControlModeT.MoveCamera) {
+			handleCameraMove(e);
+			return;
+		} else if (MouseControlMode.getCurrentMode() == MouseControlModeT.RotateCamera) {
+			camera.rotate(e.x, e.y);
+			return;
+		}
+
+		switch (BrickControlModeT.currentControlMode) {
+		case None:
+			BrickControlModeT.currentControlMode = BrickControlModeT.BrickSelectingDrag;
+		case BrickSelectingDrag:
+			builder.getBrickSelectionInfoRenderer().setEnd(
+					new Vector2f(e.x, e.y));
+			Box2 bounds = builder.getBrickSelectionInfoRenderer().getBounds();
+			directiveSelectionManager.selectByDragging(bounds);
+			break;
+		case BrickControl_Direct: {
+			if (startMoveWorldPos == null || startMovePart == null) {
+				BrickControlModeT.currentControlMode = BrickControlModeT.BrickSelectingDrag;
+				return;
+			}
+			if (directiveSelectionManager.containsInSelection(startMovePart) == false) {
+				directiveSelectionManager.clearSelection();
+				directiveSelectionManager
+						.addDirectiveToSelection(startMovePart);
+			}
+
+			if (builder.getHittedPos(e.x, e.y, true) == null)
+				return;
+
+			Vector3f currentMoveWorldPos = new Vector3f(builder.getHittedPos(
+					e.x, e.y, true));
+
+			if (MatrixMath.compareFloat(currentMoveWorldPos.y, 0) == 0) {
+				Vector3f veye = new Vector3f(0, 0,
+						camera.getDistanceBetweenObjectToCamera());
+				veye = camera.getModelViewMatrix().multiply(veye);
+				veye = camera.getLookAtPos().add(veye);
+				float y_hitted = startMovePartPos.y - startMoveWorldPos.y;
+
+				Float offsetY = null;
+				if (BuilderConfigurationManager.getInstance()
+						.isUseConnectivity()
+						&& BuilderConfigurationManager.getInstance()
+								.isUseDefaultBaseplate()) {
+					MatrixItem minItem = directiveSelectionManager
+							.getMatrixItemHavingMinY();
+					if (minItem != null) {
+						LDrawPart minPart = minItem.getParent().getParent();
+
+						offsetY = minPart.position().sub(
+								startMovePart.position()).y;
+						offsetY += minItem.getCurrentPos(minPart
+								.getRotationMatrix()).y;
+					}
+				}
+				if (offsetY == null) {
+					LDrawPart minPart = directiveSelectionManager
+							.getPartHavingMinY();
+					offsetY = minPart.boundingBox3(minPart.getRotationMatrix())
+							.getMax().y
+							+ minPart.position().sub(startMovePart.position()).y;
+				}
+				y_hitted += offsetY;
+				y_hitted *= -1.0f;
+
+				double tanThetaX = veye.y / (veye.x - currentMoveWorldPos.x);
+				double tanThetaZ = veye.y / (veye.z - currentMoveWorldPos.z);
+
+				double offsetX = y_hitted / tanThetaX;
+				double offsetZ = y_hitted / tanThetaZ;
+
+				currentMoveWorldPos.y = y_hitted;
+				currentMoveWorldPos.x += offsetX;
+				currentMoveWorldPos.z += offsetZ;
+			}
+
+			Vector3f moveByInWorld = currentMoveWorldPos.sub(startMoveWorldPos);
+
+			builder.moveDirectiveTo(startMovePart,
+					startMovePartPos.add(moveByInWorld));
+
+			moveByInWorld = startMovePart.position().sub(startMovePartPos);
+			moveByInWorld.round();
+			directiveSelectionManager.moveSelectedDirectiveBy(startMovePart);
+		}
+			break;
+		case BrickControl_Guide: {
+			if (startMoveWorldPos == null)
+				return;
+			Vector3f currentMoveWorldPos = camera.screenToWorldXZ(e.x, e.y, 0);
+			if (currentMoveWorldPos == null)
+				return;
+
+			Vector2f directionForX = null;
+			Vector2f directionForZ = null;
+			Vector2f directionForY = null;
+			Vector2f temp = camera.getWorldToScreenPos(new Vector3f(), false);
+			Vector2f tempY = camera.getWorldToScreenPos(new Vector3f(0, -1, 0),
+					false);
+			Vector2f tempX = camera.getWorldToScreenPos(new Vector3f(1, 0, 0),
+					false);
+			Vector2f tempZ = camera.getWorldToScreenPos(new Vector3f(0, 0, 1),
+					false);
+			if (temp != null && tempX != null) {
+				directionForX = temp.sub(tempX);
+				directionForX.scale(1 / directionForX.length());
+			}
+			if (temp != null && tempY != null) {
+				directionForY = temp.sub(tempY);
+				directionForY.scale(1 / directionForY.length());
+			}
+			if (temp != null && tempZ != null) {
+				directionForZ = temp.sub(tempZ);
+				directionForZ.scale(1 / directionForZ.length());
+			}
+			// System.out.println(movedByY);
+			Vector3f moveByInWorld = new Vector3f();
+			float scale = camera.getScreenToWorldDistance(1);
+
+			moveByInWorld.y = (directionForY.getY() * (startMoveMousePos.getY() - e.y)) / 2;
+			moveByInWorld.x = (directionForX.getX()
+					* (startMoveMousePos.getX() - e.x) - directionForX.getY()
+					* (startMoveMousePos.getY() - e.y)) / 2;
+			moveByInWorld.z = (directionForZ.getX()
+					* (startMoveMousePos.getX() - e.x) - directionForZ.getY()
+					* (startMoveMousePos.getY() - e.y)) / 2;
+
+			moveByInWorld = moveByInWorld.scale(scale);
+
+			// System.out.println(moveByInWorld.y);
+
+			IGuideRenderer selectedGuide = brickMovementGuideRenderer
+					.getSelectedGuide();
+
+			boolean isAllMovable_New = true;
+			boolean isAllMovable_Current = true;
+			if (selectedGuide != null) {
+				boolean isRotation = false;
+				if (selectedGuide instanceof RotationGuide)
+					isRotation = true;
+
+				Vector3f guideDirection = new Vector3f(
+						selectedGuide.getAxisDirectionVector());
+
+				float projectedDistance = moveByInWorld.dot(guideDirection);
+				moveByInWorld = guideDirection.scale(projectedDistance);
+				moveByInWorld.round();
+
+				LDrawPart pointingPart = BrickMovementGuideRenderer
+						.getInstance().getLDrawPart();
+				Vector3f center = selectedGuide.getCenterPos();
+				if (center == null)
+					center = brickMovementGuideRenderer.getLDrawPart()
+							.position();
+
+				Matrix4 newTransform = null;
+				if (isRotation == false) {
+					newTransform = builder
+							.getResultTransformMatrixOfMoveDirectiveBy(
+									pointingPart, moveByInWorld, false);
+				} else {
+					projectedDistance = new Vector2f(e.x, e.y).sub(
+							startMoveMousePos).length();
+					if ((e.stateMask & SWT.CTRL) != 0)
+						projectedDistance = 90;
+					else if ((e.stateMask & SWT.SHIFT) != 0)
+						projectedDistance = 45;
+
+					newTransform = builder
+							.getResultTransformMatrixOfRotateDirectiveByFromCenter(
+									pointingPart, Math.abs(projectedDistance),
+									moveByInWorld, center);
+
+					if (Float.isNaN(newTransform.getDet())) {
+						newTransform = pointingPart.transformationMatrix();
+					}
+				}
+
+				DirectiveGroupForTransform transformGroup = directiveSelectionManager
+						.getBrickGroupForTransform();
+
+				isAllMovable_New = transformGroup.isAllMovable(pointingPart,
+						newTransform);
+				isAllMovable_Current = transformGroup.isAllMovable(
+						pointingPart, directiveSelectionManager
+								.getStartMoveTransformMatrix(pointingPart));
+
+				// System.out.println("Current: "+isAllMovable_Current+", New: "+isAllMovable_New);
+				if (isAllMovable_New == true || isAllMovable_Current == false) {
+					transformGroup.applyTransform(pointingPart, newTransform);
+					directiveSelectionManager
+							.updateStartMoveTransformMatrixMap();
+					startMoveWorldPos = currentMoveWorldPos;
+					startMoveMousePos = new Vector2f(e.x, e.y);
+				}
+			}
+		}
+			break;
+		default:
+			break;
+		}
+
+	}
+
+	private void handleCameraMove(MouseEvent e) {
+		camera.pan(e.x, e.y);
+		directiveSelectionManager.updateScreenProjectionVerticesMapAll();
+
+		return;
+	}
+
+	private void handleMouseRightButtonDragStart(MouseEvent e) {
+		// System.out.println("handleMouseRightButtonDraggedStart");
+		switch (MouseControlMode.getCurrentMode()) {
+		case MoveCamera:
+			camera.startPan(e.x, e.y);
+			break;
+		case RotateCamera:
+			camera.startRotate(e.x, e.y);
+			break;
+		default:
+
+		}
+
+	}
+
+	private void handleMouseRightButtonDragDrop(MouseEvent e) {
+		// System.out.println("handleMouseRightButtonDraggedDrop");
+		directiveSelectionManager.updateScreenProjectionVerticesMapAll();
+	}
+
+	private void handleMouseRightButtonDrag(MouseEvent e) {
+		// System.out.println("handleMouseRightButtonDragged");
+
+		switch (MouseControlMode.getCurrentMode()) {
+		case MoveCamera:
+			camera.pan(e.x, e.y);
+			break;
+		case RotateCamera:
+			camera.rotate(e.x, e.y);
+			break;
+		default:
+
+		}
+	}
+
+	private void handleMouseWheelButtonDragStart(MouseEvent e) {
+		// System.out.println("handleMouseWheelButtonDragStart");
+		camera.startPan(e.x, e.y);
+	}
+
+	private void handleMouseWheelButtonDragDrop(MouseEvent e) {
+		// System.out.println("handleMouseWheelButtonDragDrop");
+	}
+
+	private void handleMouseWheelButtonDrag(MouseEvent e) {
+		handleCameraMove(e);
+	}
+
+	private void handleMouseLeftButtonClicked(MouseEvent e) {
+		LDrawPart selectedPart = builder.getHittedPart(e.x, e.y, false);
+
+		if (Syringe.getInstance().isActivated() == true) {
+			Syringe syringe = Syringe.getInstance();
+			if (selectedPart == null)
+				return;
+			if (syringe.getColorCode() == null) {
+				syringe.setColorCode(selectedPart.getLDrawColor()
+						.getColorCode());
+				NotificationCenter.getInstance().postNotification(
+						NotificationMessageT.LDrawSyringeColorSelected,
+						new LDrawColorSelected(syringe.getColorCode()));
+			} else {
+				LDrawColor newColor = ColorLibrary.sharedColorLibrary()
+						.colorForCode(syringe.getColorCode());
+
+				HashMap<LDrawDirective, LDrawColor> newColorMap = new HashMap<LDrawDirective, LDrawColor>();
+				newColorMap.put(selectedPart, newColor);
+				MOCBuilderUndoWrapper.getInstance().changeColor(newColorMap);
+			}
+		} else {
+			if (brickMovementGuideRenderer.getSelectedGuide() == null) {
+				if (selectedPart != null) {
+					System.out.println("Clicked Brick: "
+							+ selectedPart.displayName() + ", Pos: "
+							+ selectedPart.position());
+					System.out.print("Connectible other Bricks: ");
+					// for (String partName : BrickFinder.getInstance()
+					// .findConnectibleBrick(selectedPart))
+					// System.out.print(partName + ", ");
+					// System.out.println("");
+
+					if (directiveSelectionManager
+							.containsInSelection(selectedPart) == false) {
+						// add to selecting list
+						directiveSelectionManager
+								.addDirectiveToSelection(selectedPart);
+						BrickControlModeT.currentControlMode = BrickControlModeT.BrickControl;
+					} else {
+						ConnectivityTestResult testResult = GlobalConnectivityManager
+								.getInstance().isConnectable(selectedPart);
+
+						if (configurationManager.isUseConnectivity() == false
+								|| testResult.getResultType() != ConnectivityTestResultT.False) {
+							directiveSelectionManager
+									.removeDirectiveFromSelection(selectedPart);
+
+							if (configurationManager.isTurnOffSound() == false)
+								if (testResult.getResultType() != ConnectivityTestResultT.False)
+									SoundEffectManager
+											.getInstance()
+											.playSoundEffect(
+													SoundEffectT.ConnectingSuccess);
+
+						}
+						if (configurationManager.isTurnOffSound() == false)
+							if (testResult.getResultType() == ConnectivityTestResultT.False) {
+								SoundEffectManager.getInstance()
+										.playSoundEffect(
+												SoundEffectT.ConnectingFail);
+								System.out.println(testResult.getMsg());
+							}
+					}
+
+					handleBrickControlGuideDisplay(false);
+				} else {
+					if (directiveSelectionManager.isEmpty() == false) {
+						if (directiveSelectionManager
+								.isAllSelectedPartConnectible()) {
+							directiveSelectionManager.clearSelection(true);
+							if (configurationManager.isTurnOffSound() == false)
+								SoundEffectManager.getInstance()
+										.playSoundEffect(
+												SoundEffectT.ConnectingSuccess);
+						} else {
+							if (configurationManager.isTurnOffSound() == false)
+								SoundEffectManager.getInstance()
+										.playSoundEffect(
+												SoundEffectT.ConnectingFail);
+						}
+					}
+				}
+			}
+
+			if (directiveSelectionManager.isEmpty())
+				BrickControlModeT.currentControlMode = BrickControlModeT.None;
+
+			if (directiveSelectionManager.isEmpty() == true)
+				builder.getMetaInfoRenderer().setShowBaseplate(
+						BuilderConfigurationManager.getInstance()
+								.isUseDefaultBaseplate());
+
+			// if(brickSelectionManager.getNumOfSelectedParts()==1)
+
+			// handleBrickControlGuideDisplay(false);
+			// else
+			// handleBrickControlGuideDisplay(true);
+		}
+	}
+
+	private void handleBrickControlGuideDisplay(boolean showGroupControlGuide) {
+
+		LDrawDirective lastSelectedPart = null;
+
+		if (directiveSelectionManager.isEmpty())
+			lastSelectedPart = null;
+		else
+			lastSelectedPart = directiveSelectionManager
+					.getSelectedLastDirective();
+
+		if (lastSelectedPart instanceof LDrawPart == false)
+			return;
+		if (showGroupControlGuide)
+			brickMovementGuideRenderer.setLDrawPart(
+					(LDrawPart) lastSelectedPart, true);
+		else
+			brickMovementGuideRenderer.setLDrawPart(
+					(LDrawPart) lastSelectedPart, false);
+	}
+
+	private void handleChangePartsTransform() {
+		MOCBuilderUndoWrapper.getInstance().handleTransformSelectedDirective();
+	}
+
+	private void handleMouseRightButtonClicked(MouseEvent e) {
+
+		// System.out.println("Mouse Right Button Clicked ");
+		LDrawPart selectedPart = builder.getHittedPart(e.x, e.y, false);
+		if (selectedPart != null) {// pointing a brick
+			camera.moveTo(selectedPart.position());
+			directiveSelectionManager.updateScreenProjectionVerticesMapAll();
+
+			directiveSelectionManager
+					.removeDirectiveFromSelection(selectedPart);
+			directiveSelectionManager.addDirectiveToSelection(selectedPart);
+		}
+		handleBrickControlGuideDisplay(true);
+	}
+
+	int indexForTest = 0;
+
+	@Override
+	public void keyPressed(KeyEvent event) {
+		LinkedHashMap<ShortcutKeyT, String> keyMap = ShortcutKeyManager
+				.getInstance().getKeyMap();
+		String keyCodeString = KeyCodeStringUtil.getKeyCodeString(event);
+
+		// System.out.println(keyCodeString);
+		ShortcutKeyT function = null;
+		for (Entry<ShortcutKeyT, String> entry : keyMap.entrySet()) {
+			if (entry.getValue().toLowerCase()
+					.equals(keyCodeString.toLowerCase())) {
+				function = entry.getKey();
+				break;
+			}
+		}
+
+		if (function == null)
+			return;
+
+		switch (function) {
+		case CancelSelection:
+			if (DirectiveSelectionManager.getInstance().isEmpty() == false)
+				DirectiveSelectionManager.getInstance().clearSelection();
+			brickMovementGuideRenderer.axisSelectedType(null);
+			BrickControlModeT.currentControlMode = BrickControlModeT.None;
+			builder.getMetaInfoRenderer().setShowBaseplate(
+					BuilderConfigurationManager.getInstance()
+							.isUseDefaultBaseplate());
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.EscKeyPressed);
+			break;
+		case Save:
+			if (builder.getWorkingLDrawFile() != null)
+				builder.saveFile();
+			break;
+		case MemorizeCameraPos1:
+		case MemorizeCameraPos2:
+		case MemorizeCameraPos3:
+		case MemorizeCameraPos4:
+			CameraMoveShortCutManager.getInstance().regPos("" + event.keyCode,
+					camera.getLookAtPos());
+			break;
+		case MoveCameraToPos1:
+		case MoveCameraToPos2:
+		case MoveCameraToPos3:
+		case MoveCameraToPos4:
+			Vector3f pos = CameraMoveShortCutManager.getInstance().getPos(
+					"" + event.keyCode);
+			if (pos != null) {
+				camera.moveTo(pos);
+				directiveSelectionManager
+						.updateScreenProjectionVerticesMapAll();
+			}
+			break;
+		case HideSelectedParts:
+			MOCBuilderUndoWrapper.getInstance().hideSelectedDirectives();
+			break;
+		case ShowAll:
+			indexForTest = 0;
+			MOCBuilderUndoWrapper.getInstance().showAllStep();
+			break;
+		case HideAll:
+			indexForTest = 0;
+			MOCBuilderUndoWrapper.getInstance().hideAllStep();
+			break;
+		case ShowSequencially:
+			ArrayList<LDrawPart> partList = MOCBuilder.getInstance()
+					.getAllPartInActiveModel();
+			indexForTest %= partList.size();
+
+			partList.get(indexForTest).setHidden(false);
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawDirectiveDidChanged,
+					new LDrawDirectiveDidChanged(partList.get(indexForTest)));
+			indexForTest++;
+			break;
+		case Cut:
+			CopyNPasteManager.getInstance().setCutList(
+					directiveSelectionManager.getSelectedDirectiveList());
+			break;
+		case Undo:
+			LDrawUndoRedoManager.getInstance().undo();
+			break;
+		case Redo:
+			LDrawUndoRedoManager.getInstance().redo();
+			break;
+		case Copy:
+			CopyNPasteManager.getInstance().setCopyList(
+					directiveSelectionManager.getSelectedDirectiveList());
+			break;
+		case Paste:
+			Vector2f mousePos = GlobalMousePosition.getInstance().getPos();
+			CopyNPasteManager.getInstance().paste(
+					builder.getHittedPos(mousePos.getX(), mousePos.getY(),
+							false));
+
+			break;
+		case Delete: {
+			MOCBuilderUndoWrapper.getInstance().removeSelectedDirective();
+			GlobalFocusManager.getInstance().forceFocusToMainView();
+		}
+			break;
+		case RotateX90C:
+			handleRotateSelectedBrick(new Vector3f(90, 0, 0));
+			break;
+		case RotateX45C:
+			handleRotateSelectedBrick(new Vector3f(45, 0, 0));
+			break;
+		case RotateX15C:
+			handleRotateSelectedBrick(new Vector3f(15, 0, 0));
+			break;
+		case RotateX5C:
+			handleRotateSelectedBrick(new Vector3f(5, 0, 0));
+			break;
+		case RotateX90CC:
+			handleRotateSelectedBrick(new Vector3f(-90, 0, 0));
+			break;
+		case RotateX45CC:
+			handleRotateSelectedBrick(new Vector3f(-45, 0, 0));
+			break;
+		case RotateX15CC:
+			handleRotateSelectedBrick(new Vector3f(-15, 0, 0));
+			break;
+		case RotateX5CC:
+			handleRotateSelectedBrick(new Vector3f(-5, 0, 0));
+			break;
+		case RotateY90C:
+			handleRotateSelectedBrick(new Vector3f(0, -90, 0));
+			break;
+		case RotateY45C:
+			handleRotateSelectedBrick(new Vector3f(0, -45, 0));
+			break;
+		case RotateY15C:
+			handleRotateSelectedBrick(new Vector3f(0, -15, 0));
+			break;
+		case RotateY5C:
+			handleRotateSelectedBrick(new Vector3f(0, -5, 0));
+			break;
+		case RotateY90CC:
+			handleRotateSelectedBrick(new Vector3f(0, 90, 0));
+			break;
+		case RotateY45CC:
+			handleRotateSelectedBrick(new Vector3f(0, 45, 0));
+			break;
+		case RotateY15CC:
+			handleRotateSelectedBrick(new Vector3f(0, 15, 0));
+			break;
+		case RotateY5CC:
+			handleRotateSelectedBrick(new Vector3f(0, 5, 0));
+			break;
+		case RotateZ90C:
+			handleRotateSelectedBrick(new Vector3f(0, 0, 90));
+			break;
+		case RotateZ45C:
+			handleRotateSelectedBrick(new Vector3f(0, 0, 45));
+			break;
+		case RotateZ15C:
+			handleRotateSelectedBrick(new Vector3f(0, 0, 15));
+			break;
+		case RotateZ5C:
+			handleRotateSelectedBrick(new Vector3f(0, 0, 5));
+			break;
+		case RotateZ90CC:
+			handleRotateSelectedBrick(new Vector3f(0, 0, -90));
+			break;
+		case RotateZ45CC:
+			handleRotateSelectedBrick(new Vector3f(0, 0, -45));
+			break;
+		case RotateZ15CC:
+			handleRotateSelectedBrick(new Vector3f(0, 0, -15));
+			break;
+		case RotateZ5CC:
+			handleRotateSelectedBrick(new Vector3f(0, 0, -5));
+			break;
+		case MoveXF:
+			handleMoveSelectedBrick(Direction6T.X_Plus);
+			break;
+		case MoveXB:
+			handleMoveSelectedBrick(Direction6T.X_Minus);
+			break;
+		case MoveYF:
+			handleMoveSelectedBrick(Direction6T.Y_Minus);
+			break;
+		case MoveYB:
+			handleMoveSelectedBrick(Direction6T.Y_Plus);
+			break;
+		case MoveZF:
+			handleMoveSelectedBrick(Direction6T.Z_Plus);
+			break;
+		case MoveZB:
+			handleMoveSelectedBrick(Direction6T.Z_Minus);
+			break;
+		case MoveCamera:
+			Vector2f currentMousePos = GlobalMousePosition.getInstance()
+					.getPos();
+			pos = builder.getHittedPos(currentMousePos.getX(),
+					currentMousePos.getY(), true);
+			builder.getCamera().moveTo(pos);
+			DirectiveSelectionManager.getInstance()
+					.updateScreenProjectionVerticesMapAll();
+			break;
+		case FindNReplace:
+			new PartReplaceDlg(builder.getShell(), SWT.DIALOG_TRIM).open();
+			break;
+		case OpenConnectivityEditor:
+			if (directiveSelectionManager.getNumOfSelectedDirectives() == 1) {
+				LDrawDirective part = directiveSelectionManager
+						.getSelectedDirectiveList().get(0);
+				if (part instanceof LDrawPart)
+					ConnectivityEditorUI.getInstance(((LDrawPart) part)
+							.getDisplayName());
+			} else
+				ConnectivityEditorUI.getInstance(null);
+			break;
+
+		case NewGroup:
+			MOCBuilderUndoWrapper.getInstance().addNewGroupToWorkingFile();
+			break;
+		case GroupSelectedParts:
+			MOCBuilderUndoWrapper.getInstance().makeNewStepFromSeletion();
+			break;
+		case GenerateGropusBastedOnConnection:
+			GroupingManager.getInstance().doGrouping(builder.getCurrentStep());
+			break;
+		case PutAllPartsIntoASingleGroup:
+			GroupingManager.getInstance().mergeAll();
+			break;
+		case RemoveEmptyGroups:
+			builder.removeEmptyStep();
+			break;
+		case NewSubmodel:
+			builder.makeASubmodel();
+			break;
+		case RemoveSubmodel:
+			MOCBuilderUndoWrapper.getInstance().removeModel(
+					builder.getActiveModel());
+			break;
+		case MakeSelectedPartsIntoSubmodel:
+			MOCBuilderUndoWrapper.getInstance().makeASubmodelFromSelection();
+			break;
+		case ExtractSubmodel:
+			if (DirectiveSelectionManager.getInstance().isEmpty())
+				return;
+			LDrawDirective part = DirectiveSelectionManager.getInstance()
+					.getFirstSelectedDirective();
+			if (DirectiveSelectionManager.getInstance()
+					.isTheOnlySelectedDirective(part) == false)
+				return;
+			if (part instanceof LDrawPart) {
+				if (((LDrawPart) part).getCacheType() != PartTypeT.PartTypeSubmodel)
+					return;
+
+				MOCBuilderUndoWrapper.getInstance()
+						.extractDirectivesFromASubmodel((LDrawPart) part);
+			}
+			break;
+		case LSynthAddCommand:
+			LSynthDlg dlg = new LSynthDlg(builder.getShell(), SWT.DIALOG_TRIM);
+			try {
+				dlg.open();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			break;
+		case LSynthSynthesize:
+			builder.synthesizeLSynth();
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawModelDidChanged);
+			break;
+		case CommentAdd: {
+			TextInputDialog tDlg = new TextInputDialog(builder.getShell(),
+					SWT.DIALOG_TRIM);
+			tDlg.setText("New Comment");
+			String inputString = (String) tDlg.open();
+			if (inputString != null) {
+				if (inputString.startsWith("0 ") == false)
+					inputString = "0 " + inputString;
+
+				LDrawMetaCommand comment = new LDrawMetaCommand();
+				comment.setStringValue(inputString);
+				MOCBuilderUndoWrapper.getInstance().addDirectiveToWorkingFile(
+						comment);
+				GlobalFocusManager.getInstance().forceFocusToMainView();
+			}
+		}
+			break;
+		case CameraPosInsert: {
+			TextInputDialog tDlg = new TextInputDialog(builder.getShell(),
+					SWT.DIALOG_TRIM);
+			tDlg.setText("New Camera Position");
+			String inputString = (String) tDlg.open();
+			if (inputString != null) {
+				String description = inputString;
+				MOCBuilderUndoWrapper.getInstance().insertANewCameraTransform(
+						null, 0, description);
+			}
+		}
+			break;
+		case OverwirteCameraPos:
+			if (directiveSelectionManager
+					.getLastSelectedCameraTransformCommand() == null)
+				return;
+
+			CameraTransformCommand cCommand = directiveSelectionManager
+					.getLastSelectedCameraTransformCommand();
+
+			MOCBuilderUndoWrapper.getInstance().updateCameraTransform(cCommand);
+			break;
+		case ScreenShot:
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.TakeScreenShot);
+			break;
+		case ScreenShotGenerate:
+			ScreenShotGenerator gen = new ScreenShotGenerator();
+			gen.open(builder.getShell().getDisplay(),
+					builder.getWorkingLDrawFile());
+			break;
+		default:
+			System.out.println("Error!!");
+		}
+
+		// switch (event.keyCode) {
+		// case SWT.F5:
+		// if (brickSelectionManager.getNumOfSelectedParts() == 1) {
+		// LDrawPart part = brickSelectionManager.getSelectedPartList()
+		// .get(0);
+		// ConnectivityLibrary.getInstance().getConnectivity(
+		// part.displayName(), true, false);
+		// part.getConnectivityList(true, false);
+		//
+		// }
+		// break;
+		// case SWT.TAB:
+		// if (isAltKeyPressed) {
+		// isAltKeyPressed = isShiftKeyPressed = isCtrlKeyPressed = false;
+		// }
+		// }
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedRedraw);
+	}
+
+	private void handleMoveSelectedBrick(Direction6T direction) {
+		if (directiveSelectionManager.isEmpty())
+			return;
+		LDrawDirective part = directiveSelectionManager
+				.getSelectedDirectiveList().get(0);
+		Vector3f moveByInWorld = null;
+		switch (direction) {
+		case X_Minus:
+			moveByInWorld = new Vector3f(-1, 0, 0)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getXZValue());
+			break;
+		case X_Plus:
+			moveByInWorld = new Vector3f(1, 0, 0)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getXZValue());
+			break;
+		case Y_Minus:
+			moveByInWorld = new Vector3f(0, -1, 0)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getYValue());
+			break;
+		case Y_Plus:
+			moveByInWorld = new Vector3f(0, 1, 0)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getYValue());
+			break;
+		case Z_Minus:
+			moveByInWorld = new Vector3f(0, 0, -1)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getXZValue());
+			break;
+		case Z_Plus:
+			moveByInWorld = new Vector3f(0, 0, 1)
+					.scale(BuilderConfigurationManager.getInstance()
+							.getGridUnit().getXZValue());
+			break;
+
+		}
+
+		Matrix4 newTransform = null;
+		newTransform = builder.getResultTransformMatrixOfMoveDirectiveBy(part,
+				moveByInWorld, false);
+		directiveSelectionManager.getBrickGroupForTransform().applyTransform(
+				part, newTransform);
+		handleChangePartsTransform();
+	}
+
+	private void handleRotateSelectedBrick(Vector3f rotationVector) {
+		ArrayList<LDrawDirective> partList = DirectiveSelectionManager
+				.getInstance().getSelectedDirectiveList();
+		if (partList.size() == 0)
+			return;
+
+		MOCBuilderUndoWrapper.getInstance().rotateSelectedDirectiveBy(
+				rotationVector);
+	}
+
+	private void handleFindConnectibleBricks() {
+		// if (DirectiveSelectionManager.getInstance().isEmpty() == false) {
+		// LDrawDirective part = DirectiveSelectionManager.getInstance()
+		// .getSelectedDirectiveList().get(0);
+		// if (DirectiveSelectionManager.getInstance().isTheOnlySelectedPart(
+		// part)) {
+		// for (String partName : BrickFinder.getInstance()
+		// .findConnectibleBrick(part))
+		// System.out.println(partName);
+		// }
+		// }
+	}
+
+	@Override
+	public void keyReleased(KeyEvent event) {
+	}
+
+}

@@ -285,7 +285,6 @@ public class LDrawDLBuilder {
 		gl2.glBufferData(GL2.GL_ARRAY_BUFFER, byteBufferForVertex.capacity(),
 				byteBufferForVertex, GL2.GL_STATIC_DRAW);
 
-		
 		gl2.glGenBuffers(1, dl.idx_vbo);
 		gl2.glBindBuffer(GL2.GL_ELEMENT_ARRAY_BUFFER, dl.idx_vbo.get(0));
 		gl2.glBufferData(GL2.GL_ELEMENT_ARRAY_BUFFER,
@@ -321,7 +320,6 @@ public class LDrawDLBuilder {
 		return dl;
 	}
 
-	
 	// ========== LDrawDLBuilderAddLine
 	// ===============================================
 	//
@@ -339,7 +337,7 @@ public class LDrawDLBuilder {
 				LDrawDisplayList.VERT_STRIDE);
 		nl.setNext(null);
 		nl.setVcount(2);
-		
+
 		for (i = 0; i < 2; ++i) {
 			MatrixMath.copy_vec3(nl.data, LDrawDisplayList.VERT_STRIDE * i, v,
 					i * 3);

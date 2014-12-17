@@ -548,6 +548,8 @@ public class MOCBuilder {
 			ldrawFile = LDrawFile.newEditableFile();
 			ldrawFile.activeModel().addStep();
 			ldrawFile.setPath(null);
+			ldrawFile.activeModel().setModelName("Untitled.ldr");
+			ldrawFile.activeModel().setFileName("Untitled.ldr");
 			ldrawFileChanged();
 		}
 	}
@@ -591,8 +593,7 @@ public class MOCBuilder {
 			}
 		});
 		if (BackgroundThreadManager.getInstance().isAllFinish() == false)
-			new ProgressDlg(shell, SWT.NONE)
-					.open();
+			new ProgressDlg(shell, SWT.NONE).open();
 	}
 
 	public void importFile(String path, Vector3f pos) {
@@ -697,9 +698,8 @@ public class MOCBuilder {
 					globalConnectivityManager.removePart(
 							(LDrawPart) subDirectives,
 							updateConnectivityManager);
-					directiveSelectionManager
-							.removeDirective((LDrawPart) subDirectives);
 				}
+				directiveSelectionManager.removeDirective(subDirectives);
 			}
 
 			DirectiveSelectionManager.getInstance().clearSelection(
@@ -715,6 +715,7 @@ public class MOCBuilder {
 		} else {
 			if (directive.enclosingDirective() != null)
 				directive.enclosingDirective().removeDirective(directive);
+			directiveSelectionManager.removeDirective(directive);
 		}
 
 		updateGridRange();
@@ -797,11 +798,9 @@ public class MOCBuilder {
 
 		if (ldrawFile != null)
 			if (ldrawFile.path() != null)
-				this.shell
-						.setText(APP_NAME + ": " + ldrawFile.path());
+				this.shell.setText(APP_NAME + ": " + ldrawFile.path());
 			else
-				this.shell
-						.setText(APP_NAME + ": untitled");
+				this.shell.setText(APP_NAME + ": untitled");
 		return true;
 	}
 
@@ -1063,6 +1062,10 @@ public class MOCBuilder {
 				if (directive instanceof LDrawDrawableElement) {
 					((LDrawDrawableElement) directive).setHidden(true);
 					retList.add((LDrawDrawableElement) directive);
+					NotificationCenter.getInstance().postNotification(
+							NotificationMessageT.LDrawDirectiveDidChanged,
+							new LDrawDirectiveDidChanged(directive));
+
 				}
 		}
 		NotificationCenter.getInstance().postNotification(
@@ -1082,6 +1085,23 @@ public class MOCBuilder {
 				if (directive instanceof LDrawDrawableElement) {
 					((LDrawDrawableElement) directive).setHidden(false);
 					retList.add((LDrawDrawableElement) directive);
+					NotificationCenter.getInstance().postNotification(
+							NotificationMessageT.LDrawDirectiveDidChanged,
+							new LDrawDirectiveDidChanged(directive));
+				} else if (directive instanceof LDrawLSynth) {
+					for (LDrawDirective subDirective : ((LDrawLSynth) directive)
+							.synthesizedParts())
+						if (subDirective instanceof LDrawDrawableElement) {
+							((LDrawDrawableElement) subDirective)
+									.setHidden(false);
+							retList.add((LDrawDrawableElement) subDirective);
+							NotificationCenter
+									.getInstance()
+									.postNotification(
+											NotificationMessageT.LDrawDirectiveDidChanged,
+											new LDrawDirectiveDidChanged(
+													subDirective));
+						}
 				}
 		}
 
@@ -1460,12 +1480,29 @@ public class MOCBuilder {
 			if (directive instanceof LDrawDrawableElement) {
 				((LDrawDrawableElement) directive).setHidden(true);
 				retList.add((LDrawDrawableElement) directive);
+
+				NotificationCenter.getInstance().postNotification(
+						NotificationMessageT.LDrawDirectiveDidChanged,
+						new LDrawDirectiveDidChanged(directive));
+			} else if (directive instanceof LDrawLSynth) {
+				for (LDrawDirective subDirective : ((LDrawLSynth) directive)
+						.synthesizedParts())
+					if (subDirective instanceof LDrawDrawableElement) {
+						((LDrawDrawableElement) subDirective).setHidden(true);
+						retList.add((LDrawDrawableElement) subDirective);
+						NotificationCenter.getInstance().postNotification(
+								NotificationMessageT.LDrawDirectiveDidChanged,
+								new LDrawDirectiveDidChanged(subDirective));
+					}
 			} else if (directive instanceof LDrawStep) {
 				for (LDrawDirective subDirective : ((LDrawStep) directive)
 						.subdirectives())
 					if (subDirective instanceof LDrawDrawableElement) {
 						((LDrawDrawableElement) subDirective).setHidden(true);
 						retList.add((LDrawDrawableElement) subDirective);
+						NotificationCenter.getInstance().postNotification(
+								NotificationMessageT.LDrawDirectiveDidChanged,
+								new LDrawDirectiveDidChanged(subDirective));
 					}
 			}
 		directiveSelectionManager.clearSelection();
@@ -1525,5 +1562,9 @@ public class MOCBuilder {
 
 		NotificationCenter.getInstance().postNotification(
 				NotificationMessageT.NeedRedraw);
+	}
+
+	public Shell getShell() {
+		return this.shell;
 	}
 }

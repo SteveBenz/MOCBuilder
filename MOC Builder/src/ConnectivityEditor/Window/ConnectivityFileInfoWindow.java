@@ -1,6 +1,7 @@
 package ConnectivityEditor.Window;
 
 import java.util.ArrayList;
+import java.util.Locale;
 
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.MouseEvent;
@@ -16,14 +17,16 @@ import org.eclipse.swt.widgets.TreeItem;
 
 import Connectivity.Axle;
 import Connectivity.Ball;
+import Connectivity.CollisionBox;
 import Connectivity.CollisionConvexHull;
+import Connectivity.CollisionCylinder;
 import Connectivity.CollisionShape;
+import Connectivity.CollisionSphere;
 import Connectivity.Connectivity;
 import Connectivity.Fixed;
 import Connectivity.Hinge;
 import Connectivity.Hole;
 import Connectivity.ICustom2DField;
-import Connectivity.MatrixItem;
 import Connectivity.Slider;
 import ConnectivityEditor.Connectivity.AxleT;
 import ConnectivityEditor.Connectivity.FixedT;
@@ -51,6 +54,17 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 		NotificationCenter.getInstance().addSubscriber(this,
 				NotificationMessageT.ConnectivityDidChanged);
 		NotificationCenter.getInstance().addSubscriber(this,
+				NotificationMessageT.ConnectivityDidSelected);
+	}
+	
+	public void terminate(){
+		NotificationCenter.getInstance().removeSubscriber(this,
+				NotificationMessageT.ConnectivityDidAdded);
+		NotificationCenter.getInstance().removeSubscriber(this,
+				NotificationMessageT.ConnectivityDidRemoved);
+		NotificationCenter.getInstance().removeSubscriber(this,
+				NotificationMessageT.ConnectivityDidChanged);
+		NotificationCenter.getInstance().removeSubscriber(this,
 				NotificationMessageT.ConnectivityDidSelected);
 	}
 
@@ -85,7 +99,7 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 					if (collisionShape instanceof CollisionConvexHull)
 						continue;
 					treeItem = new TreeItem(treeItem_Collision, SWT.NONE);
-					treeItem.setText(collisionShape.toString());
+					treeItem.setText(getDescription(collisionShape));
 					treeItem.setData(collisionShape);
 				}
 			treeItem_Collision.setExpanded(true);
@@ -227,40 +241,21 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 		if (conn instanceof ICustom2DField) {
 			ICustom2DField custom2d = (ICustom2DField) conn;
 			if (custom2d instanceof Hole)
-				strBuilder.append("Hole: ");
+				strBuilder.append("Hole ");
 			else
-				strBuilder.append("Stud: ");
+				strBuilder.append("Stud ");
 
 			strBuilder.append(" Size: ");
 			strBuilder.append(custom2d.getheight() / 2);
 			strBuilder.append(",");
 			strBuilder.append(custom2d.getwidth() / 2);
-			strBuilder.append(" MatrixInfo: ");
-			MatrixItem[][] matrixItem = custom2d.getMatrixItem();
-
-			for (int column = 0; column < custom2d.getheight() + 1; column++) {
-				for (int row = 0; row < custom2d.getwidth() + 1; row++) {
-					strBuilder.append(matrixItem[column][row].getAltitude()
-							+ ":" + matrixItem[column][row].getOccupiedArea()
-							+ ":" + matrixItem[column][row].getShape() + ",");
-				}
-				strBuilder.append("  ");
-			}
-
+			strBuilder.append(String.format(Locale.US,
+					" Position: %.2f, %.2f, %.2f", conn.getCurrentPos().getX(),
+					conn.getCurrentPos().getY(), conn.getCurrentPos().getZ()));
 		} else if (conn instanceof Axle) {
 			strBuilder.append("Axle");
 			strBuilder.append(" Type: ");
 			strBuilder.append(AxleT.byValue(conn.gettype()));
-			strBuilder.append(" Length: ");
-			strBuilder.append("" + ((Axle) conn).getlength());
-			strBuilder.append(" StartCapped: ");
-			strBuilder.append("" + ((Axle) conn).getstartCapped());
-			strBuilder.append(" EndCapped: ");
-			strBuilder.append("" + ((Axle) conn).getendCapped());
-			strBuilder.append(" Grabbing: ");
-			strBuilder.append("" + ((Axle) conn).getgrabbing());
-			strBuilder.append(" RequireGrabbing: ");
-			strBuilder.append("" + ((Axle) conn).getrequireGrabbing());
 		} else if (conn instanceof Hinge) {
 			strBuilder.append("Hinge");
 			strBuilder.append(" Type: ");
@@ -275,23 +270,28 @@ public class ConnectivityFileInfoWindow implements ILDrawSubscriber {
 			strBuilder.append(" Type: ");
 			strBuilder.append("Slider_" + (conn.gettype() % 2 == 0 ? "f" : "m")
 					+ "_" + conn.gettype() / 2);
-			strBuilder.append(" StartCapped: ");
-			strBuilder.append("" + ((Slider) conn).getstartCapped());
-			strBuilder.append(" EndCapped: ");
-			strBuilder.append("" + ((Slider) conn).getendCapped());
-			strBuilder.append(" Cylindrial: ");
-			strBuilder.append("" + ((Slider) conn).getcylindrical());
 
 		} else if (conn instanceof Ball) {
 			strBuilder.append("Ball");
 			strBuilder.append(" Type: ");
 			strBuilder.append("Ball_" + (conn.gettype() % 2 == 0 ? "f" : "m")
 					+ "_" + conn.gettype() / 2);
+		} else if (conn instanceof CollisionBox) {
+			strBuilder.append("Box");
+		} else if (conn instanceof CollisionSphere) {
+			strBuilder.append("Sphere");
+		} else if (conn instanceof CollisionCylinder) {
+			strBuilder.append("Cylinder");
+		} else if (conn instanceof CollisionConvexHull) {
+			strBuilder.append("ConvexHull");
 		} else {
 			strBuilder.append(conn.getName());
 			strBuilder.append(" ");
 			strBuilder.append(conn.toString());
 		}
+		strBuilder.append(String.format(Locale.US,
+				" Position: %.2f, %.2f, %.2f", conn.getCurrentPos().getX(),
+				conn.getCurrentPos().getY(), conn.getCurrentPos().getZ()));
 		return strBuilder.toString();
 	}
 }

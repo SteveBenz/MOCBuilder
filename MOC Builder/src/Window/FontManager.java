@@ -34,7 +34,7 @@ public class FontManager {
 			break;
 		default:
 			type = display.getSystemFont().getFontData()[0].getName();
-			if(size>11)size=11;
+			if(size>10)size=10;
 			break;
 		}
 		

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 
 import BrickControlGuide.BrickMovementGuideRenderer;
+import Command.CameraTransformCommand;
 import Command.LDrawLSynth;
 import Command.LDrawPart;
 import Common.Box2;
@@ -49,6 +50,7 @@ public class DirectiveSelectionManager {
 	private ConnectivityManager connectivityManager = new ConnectivityManager();
 
 	private LDrawLSynth lastSelectedLSynth = null;
+	private CameraTransformCommand lastSelectedCameraTransform = null;
 
 	private DirectiveSelectionManager() {
 		selectedDirectives = new DirectiveGroupForTransform();
@@ -80,14 +82,17 @@ public class DirectiveSelectionManager {
 		} else if (directive instanceof LDrawPart) {
 			if (updateProjectionMap)
 				updateScreenProjectionVerticesMap(directive);
+		} else if (directive instanceof CameraTransformCommand) {
+			lastSelectedCameraTransform = (CameraTransformCommand) directive;
 		}
 	}
 
 	public void addDirectiveToSelection(LDrawDirective directive) {
-//		synchronized (directiveList) {
-//			if (directiveList.contains(directive) == false)
-//				return;
-//		}
+		addDirectiveToSelection(directive, true);
+	}
+
+	public void addDirectiveToSelection(LDrawDirective directive,
+			boolean updateLastSelectedDirective) {
 
 		if (selectedDirectives.contains(directive) == false) {
 			if (directive instanceof LDrawPart) {
@@ -97,8 +102,12 @@ public class DirectiveSelectionManager {
 						directive.transformationMatrix());
 				initialTransformMatrixMap.put(directive,
 						directive.transformationMatrix());
-			}else if (directive instanceof LDrawLSynth) {
-				lastSelectedLSynth = (LDrawLSynth) directive;
+			} else if (directive instanceof LDrawLSynth) {
+				if (updateLastSelectedDirective)
+					lastSelectedLSynth = (LDrawLSynth) directive;
+			} else if (directive instanceof CameraTransformCommand) {
+				if (updateLastSelectedDirective)
+					lastSelectedCameraTransform = (CameraTransformCommand) directive;
 			}
 			directive.setSelected(true);
 			selectedDirectives.addDirective(directive);
@@ -280,7 +289,7 @@ public class DirectiveSelectionManager {
 
 		selectedDirectives.removeDirective(directive);
 		directive.setSelected(false);
-		
+
 		NotificationCenter.getInstance().postNotification(
 				NotificationMessageT.LDrawDirectiveDidSelected);
 	}
@@ -360,8 +369,8 @@ public class DirectiveSelectionManager {
 		// System.out.println("updateScreenProjectionVerticesMap");
 		if (directive instanceof LDrawPart == false)
 			return;
-		
-		if(((LDrawPart)directive).isHidden()){
+
+		if (((LDrawPart) directive).isHidden()) {
 			projectedLDrawDirectiveVerticesMap.remove(directive);
 			return;
 		}
@@ -481,7 +490,7 @@ public class DirectiveSelectionManager {
 				minYPos = testDirective.boundingBox3().getMax().y;
 				minYPosPart = (LDrawPart) testDirective;
 			}
-		}		
+		}
 		return minYPosPart;
 	}
 
@@ -521,6 +530,16 @@ public class DirectiveSelectionManager {
 	}
 
 	public LDrawLSynth getLastSelectedLSynth() {
+		if (lastSelectedLSynth != null
+				&& directiveList.contains(lastSelectedLSynth) == false)
+			lastSelectedLSynth = null;
 		return lastSelectedLSynth;
+	}
+
+	public CameraTransformCommand getLastSelectedCameraTransformCommand() {
+		if (lastSelectedCameraTransform != null
+				&& directiveList.contains(lastSelectedCameraTransform) == false)
+			lastSelectedCameraTransform = null;
+		return lastSelectedCameraTransform;
 	}
 }

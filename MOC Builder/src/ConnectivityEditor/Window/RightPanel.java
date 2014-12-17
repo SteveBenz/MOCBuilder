@@ -33,12 +33,20 @@ public class RightPanel extends Composite implements ILDrawSubscriber {
 	private SashForm sashForm;
 	public static boolean isShowCollision = true;
 
+	ConnectivityFileInfoWindow connectivityFileInfoWindow;
+	
 	public RightPanel(Composite arg0, int arg1) {
 		super(arg0, arg1);
 		generateView();
 
 		NotificationCenter.getInstance().addSubscriber(this,
 				NotificationMessageT.ConnectivityDidSelected);
+	}
+
+	public void terminate() {
+		NotificationCenter.getInstance().removeSubscriber(this,
+				NotificationMessageT.ConnectivityDidSelected);
+		connectivityFileInfoWindow.terminate();
 	}
 
 	private void generateView() {
@@ -73,7 +81,7 @@ public class RightPanel extends Composite implements ILDrawSubscriber {
 		sashForm.setLayoutData(gridData);
 
 		// FileInfoTreeView
-		ConnectivityFileInfoWindow connectivityFileInfoWindow = new ConnectivityFileInfoWindow(
+		connectivityFileInfoWindow = new ConnectivityFileInfoWindow(
 				sashForm);
 
 		detailComposite = new Composite(sashForm, SWT.NONE);

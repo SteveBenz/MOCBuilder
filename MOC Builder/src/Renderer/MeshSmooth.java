@@ -18,7 +18,7 @@ import LDraw.Support.Range;
 //
 //- Optionally locating T junctions and subdividing the faces.
 //
-//- Determining smooth and creased edges basde on the presence of lines and 
+//- Determining smooth and creased edges based on the presence of lines and 
 // crease angles.
 //
 //- Resolving BFC errors.  (The normals are generated correctly for two-sided
@@ -54,7 +54,6 @@ import LDraw.Support.Range;
 public class MeshSmooth {
 	public static final float EPSI = 0.05f;
 	public static final float EPSI2 = 0.00025f;
-	
 
 	// Compare two unique 3-d points in space for location-sameness.
 	public static int compare_points(float[] p1, int offset_1, float[] p2,
@@ -150,7 +149,7 @@ public class MeshSmooth {
 		Vertex temp_i = vertices.get(i);
 		vertices.set(i, vertices.get(j));
 		vertices.set(j, temp_i);
-		
+
 	}
 
 	// sort APIs are wrapped in functions that don't have an algo, e.g. "just
@@ -295,30 +294,26 @@ public class MeshSmooth {
 	// walk - we know all these vertices are near each other,
 	// so we just go find them without jumping.
 	public static Range range_for_vertex(ArrayList<Vertex> vertices, int base,
-			int stop, int qIndex) {
+			int stop, Vertex q) {
 		int begin = 0, end = 0;
-		int targetIndex = 0;
-		int b = qIndex;
-		int e = qIndex;
+
+		int b = vertices.indexOf(q);
+		int e = b;
+
 
 		while (b >= base
 				&& compare_points(vertices.get(b).getLocation(),
-						vertices.get(qIndex).getLocation()) == 0)
+						q.getLocation()) == 0)
 			--b;
 		++b;
 
 		while (e < stop
 				&& compare_points(vertices.get(e).getLocation(),
-						vertices.get(qIndex).getLocation()) == 0)
+						q.getLocation()) == 0)
 			++e;
-
-		assert (b < e);
-		assert (b <= qIndex);
-		assert (e > qIndex);
 
 		begin = b;
 		end = e;
-
 		return new Range(begin, end - begin);
 
 	}
@@ -342,9 +337,9 @@ public class MeshSmooth {
 	public static boolean is_crease(float n1[], float n2[], boolean flip) {
 		float dot = vec3f_dot(n1, n2);
 		if (flip == true) {
-			return (dot > -0.5);
+			return (dot > -0.5f);
 		} else
-			return (dot < 0.5);
+			return (dot < 0.5f);
 	}
 
 	// #pragma mark -
@@ -522,11 +517,11 @@ public class MeshSmooth {
 		IntBuffer did_reverse = IntBuffer.allocate(1);
 		Vertex ret;
 
-		// assert(*dir == -1 || *dir == 1);
 		if (dir.get(0) > 0)
 			ret = circulate_ccw(v, did_reverse);
 		else
 			ret = circulate_cw(v, did_reverse);
+
 		if (did_reverse.get() != 0)
 			dir.put(0, dir.get(0) * -1);
 		return ret;

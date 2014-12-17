@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.TreeSet;
 
+import Command.CameraTransformCommand;
 import Command.LDrawColor;
 import Command.LDrawColorT;
 import Command.LDrawLSynth;
@@ -254,6 +255,9 @@ public class LDrawUtilities {
 				classForType = new LDrawTexture();
 			else if (LDrawLSynth.lineIsLSynthBeginning(line)) {
 				classForType = new LDrawLSynth();
+			} else if (CameraTransformCommand
+					.lineIsCameraTransformBeginning(line)) {
+				classForType = new CameraTransformCommand();
 			} else
 				classForType = new LDrawMetaCommand();
 		}
@@ -401,19 +405,21 @@ public class LDrawUtilities {
 		if (colorCode == LDrawColorT.LDrawColorCustomRGB) {
 			// Opaque?
 			if (components[3] == 1.0f) {
-				outputString = String.format(Locale.US,"0x2%02X%02X%02X",
+				outputString = String.format(Locale.US, "0x2%02X%02X%02X",
 						(components[0] * 255), (components[1] * 255),
 						(components[2] * 255));
 			} else {
-				outputString = String.format(Locale.US,"0x3%02X%02X%02X",
+				outputString = String.format(Locale.US, "0x3%02X%02X%02X",
 						(components[0] * 255), (components[1] * 255),
 						(components[2] * 255));
 			}
 		} else {
 			if (ColumnizesOutput == true) {
-				outputString = String.format(Locale.US,"%3d", colorCode.getValue());
+				outputString = String.format(Locale.US, "%3d",
+						colorCode.getValue());
 			} else {
-				outputString = String.format(Locale.US,"%d", colorCode.getValue());
+				outputString = String.format(Locale.US, "%d",
+						colorCode.getValue());
 			}
 
 		}
@@ -562,7 +568,7 @@ public class LDrawUtilities {
 		else
 			return partName.substring(0, lastIndexOfDot);
 	}
-	
+
 	public static String excludePatternWithoutExtension(String partName) {
 		String result = "";
 
@@ -613,7 +619,7 @@ public class LDrawUtilities {
 		}
 		return retList;
 	}
-	
+
 	public static boolean isIntersected(Box3 box1, Box3 box2) {
 		Vector3f max_box1 = box1.getMax();
 		Vector3f min_box1 = box1.getMin();
@@ -632,6 +638,25 @@ public class LDrawUtilities {
 		// System.out.println("max_box1: "+max_box1+", min_box1: "+min_box1);
 		// System.out.println("max_box2: "+max_box2+", min_box1: "+min_box2);
 		return true;
+
+	}
+
+	public static String excludePartName(String path) {
+		if(path==null)return "untitled";
+		int startIndex = path.lastIndexOf("/");
+		if (startIndex < path.lastIndexOf("\\"))
+			startIndex = path.lastIndexOf("\\");
+		int endIndex = path.lastIndexOf(".");
+		String ret;
+		if (startIndex != -1 && endIndex != -1)
+			ret = path.substring(startIndex, endIndex);
+		else if (startIndex != -1)
+			ret = path.substring(startIndex);
+		else if (endIndex != -1)
+			ret = path.substring(0, endIndex);
+		else
+			ret = path;
+		return ret;
 
 	}
 }

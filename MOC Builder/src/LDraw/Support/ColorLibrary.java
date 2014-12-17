@@ -414,25 +414,31 @@ public class ColorLibrary implements Cloneable {
 		// Isolate the color's grayscale intensity
 		// http://en.wikipedia.org/wiki/Grayscale
 		brightness = originalColor[0] * 0.30f + originalColor[1] * 0.59f
-				+ originalColor[2] * 0.11f;		
+				+ originalColor[2] * 0.11f;
 
 		// compliment dark colors with light ones and light colors with dark
 		// ones.
-		
-		if (brightness > 0.3f) {
-			final float adjusingValue = brightness*0.1f;
+
+		if (brightness > 0.5f) {
+			final float adjusingValue = brightness * 0.1f;
 			// Darken
-			complimentColor[0] = Math.max(originalColor[0] - adjusingValue, 0.0f);
-			complimentColor[1] = Math.max(originalColor[1] - adjusingValue, 0.0f);
-			complimentColor[2] = Math.max(originalColor[2] - adjusingValue, 0.0f);
-//			for(int i=0; i < 3; i++)
-//			complimentColor[i] = originalColor[i];
-		} else {			
-			final float adjusingValue = brightness*0.1f;
+			complimentColor[0] = Math.max(originalColor[0] - adjusingValue,
+					0.0f);
+			complimentColor[1] = Math.max(originalColor[1] - adjusingValue,
+					0.0f);
+			complimentColor[2] = Math.max(originalColor[2] - adjusingValue,
+					0.0f);
+			// for(int i=0; i < 3; i++)
+			// complimentColor[i] = originalColor[i];
+		} else {
+			final float adjusingValue = (1 - brightness * brightness) * 0.2f;
 			// Lighten
-			complimentColor[0] = Math.min(originalColor[0] + adjusingValue, 1.0f);
-			complimentColor[1] = Math.min(originalColor[1] + adjusingValue, 1.0f);
-			complimentColor[2] = Math.min(originalColor[2] + adjusingValue, 1.0f);
+			complimentColor[0] = Math.min(originalColor[0] + adjusingValue,
+					1.0f);
+			complimentColor[1] = Math.min(originalColor[1] + adjusingValue,
+					1.0f);
+			complimentColor[2] = Math.min(originalColor[2] + adjusingValue,
+					1.0f);
 		}
 
 		complimentColor[3] = originalColor[3];

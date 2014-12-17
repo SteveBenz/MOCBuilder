@@ -71,8 +71,7 @@ public class GlobalConnectivityManager {
 				.add(testPartBoundingBox.getMin()).scale(0.5f);
 		int worldSize = (int) Math.max(size.x, Math.max(size.y, size.z));
 
-		CollisionDetectionWorld detectionWorld = new CollisionDetectionWorld(10240, 
-				worldSize * 2, center.x, center.y, center.z);
+		CollisionDetectionWorld detectionWorld = new CollisionDetectionWorld(worldSize * 2, center.x, center.y, center.z);
 
 		for (LDrawPart adjPart : getAdjacentPartList(testPartBoundingBox)) {
 			// System.out.println(adjPart.transformationMatrix());

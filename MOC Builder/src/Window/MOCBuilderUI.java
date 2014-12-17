@@ -3,6 +3,11 @@ package Window;
 import static javax.media.opengl.fixedfunc.GLMatrixFunc.GL_MODELVIEW;
 import static javax.media.opengl.fixedfunc.GLMatrixFunc.GL_PROJECTION;
 
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
+
+import javax.imageio.ImageIO;
 import javax.media.opengl.GL;
 import javax.media.opengl.GL2;
 import javax.media.opengl.GLAutoDrawable;
@@ -22,11 +27,8 @@ import org.eclipse.swt.dnd.Transfer;
 import org.eclipse.swt.dnd.TransferData;
 import org.eclipse.swt.events.DisposeEvent;
 import org.eclipse.swt.events.DisposeListener;
-import org.eclipse.swt.events.FocusEvent;
-import org.eclipse.swt.events.FocusListener;
 import org.eclipse.swt.events.ShellAdapter;
 import org.eclipse.swt.events.ShellEvent;
-import org.eclipse.swt.events.ShellListener;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
@@ -67,7 +69,7 @@ import Resource.SoundEffectT;
 import UndoRedo.MOCBuilderUndoWrapper;
 
 import com.jogamp.opengl.swt.GLCanvas;
-import com.jogamp.opengl.util.FPSAnimator;
+import com.jogamp.opengl.util.awt.Screenshot;
 
 public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 
@@ -84,6 +86,7 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 	DragSelectionInfoRenderer brickSelectionInfoRenderer;
 	GlobalBoundingBoxRenderer boundingBoxRenderer;
 
+	Display display;
 	Shell shell;
 	SashForm sashForm;
 	Composite mainView;
@@ -95,6 +98,7 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 	}
 
 	public void open(Display display) {
+		this.display = display;
 		shell = new Shell(display);
 		mocBuilder.setShell(shell);
 		BuilderConfigurationManager configurationManager = BuilderConfigurationManager
@@ -176,7 +180,7 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 				}
 			});
 
-//		 mocBuilder.openFile(System.getProperty("user.home")+"/untitled.ldr");
+//		mocBuilder.openFile(System.getProperty("user.home") + "/untitled.ldr");
 
 		while (!shell.isDisposed()) {
 			if (!display.readAndDispatch())
@@ -491,6 +495,19 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 		gl2.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
 		gl2.glLoadIdentity(); // Reset The Modelview Matrix
 		camera.tickle();
+		if (takeScreenShot) {
+			try {
+				glRenderer.draw(gl2);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+
+			takeScreenShot();
+			takeScreenShot = false;
+
+			gl2.glClear(GL.GL_COLOR_BUFFER_BIT | GL.GL_DEPTH_BUFFER_BIT);
+			gl2.glLoadIdentity(); // Reset The Modelview Matrix
+		}
 
 		try {
 			metaInfoRenderer.draw(gl2);
@@ -503,6 +520,11 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 			glRenderer.draw(gl2);
 		} catch (Exception e) {
 			e.printStackTrace();
+		}
+
+		if (takeScreenShot) {
+			takeScreenShot();
+			takeScreenShot = false;
 		}
 
 		// System.out.println((System.nanoTime()-t));
@@ -524,7 +546,6 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
-
 	}
 
 	@Override
@@ -581,6 +602,9 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 
 		NotificationCenter.getInstance().addSubscriber(this,
 				NotificationMessageT.NeedRedraw);
+		NotificationCenter.getInstance().addSubscriber(this,
+				NotificationMessageT.TakeScreenShot);
+
 		new Thread(new Runnable() {
 			@Override
 			public void run() {
@@ -600,14 +624,21 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 			}
 
 		}).start();
+
 	}
 
 	private boolean needRedraw = false;
+	private boolean takeScreenShot = false;
 
 	@Override
 	public void receiveNotification(NotificationMessageT messageType,
 			INotificationMessage msg) {
-		needRedraw = true;
+		if (messageType == NotificationMessageT.NeedRedraw)
+			needRedraw = true;
+		else if (messageType == NotificationMessageT.TakeScreenShot) {
+			takeScreenShot = true;
+			needRedraw = true;
+		}
 	}
 
 	private Vector3f getPartOffset(LDrawPart part, Vector3f hitWorldPos) {
@@ -630,5 +661,32 @@ public class MOCBuilderUI implements GLEventListener, ILDrawSubscriber {
 		retValue = new Vector3f((float) offsetX, y_hitted, (float) offsetZ);
 
 		return retValue;
+	}
+
+	private void takeScreenShot() {
+
+		File file = new File(
+				BuilderConfigurationManager.getDefaultDataDirectoryPath()
+						+ "screenshot");
+		if (file.exists() == false) {
+			file.mkdir();
+		}
+		String tFileName = BuilderConfigurationManager
+				.getDefaultDataDirectoryPath()
+				+ "screenshot/"
+				+ LDrawUtilities.excludePartName(mocBuilder
+						.getWorkingLDrawFile().path())
+				+ "_"
+				+ System.currentTimeMillis() + ".png";
+		BufferedImage tScreenshot = Screenshot.readToBufferedImage(
+				(int) brickSelectionInfoRenderer.getCanvasSize().getWidth(),
+				(int) brickSelectionInfoRenderer.getCanvasSize().getHeight());
+		File tScreenCaptureImageFile = new File(tFileName);
+		try {
+			ImageIO.write(tScreenshot, "png", tScreenCaptureImageFile);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 }

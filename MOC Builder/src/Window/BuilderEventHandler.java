@@ -28,6 +28,7 @@ import Builder.MouseControlMode;
 import Builder.MouseControlMode.MouseControlModeT;
 import Builder.ShortcutKeyManager;
 import Builder.ShortcutKeyManager.ShortcutKeyT;
+import Command.CameraTransformCommand;
 import Command.LDrawColor;
 import Command.LDrawLSynth;
 import Command.LDrawPart;
@@ -49,9 +50,11 @@ import LDraw.Support.LDrawDirective;
 import LDraw.Support.LDrawMetaCommand;
 import LDraw.Support.MatrixMath;
 import Notification.LDrawColorSelected;
+import Notification.LDrawDirectiveDidChanged;
 import Notification.NotificationCenter;
 import Notification.NotificationMessageT;
 import OtherTools.PartReplaceDlg;
+import OtherTools.ScreenShotGenerator;
 import OtherTools.Syringe;
 import Resource.SoundEffectManager;
 import Resource.SoundEffectT;
@@ -640,7 +643,7 @@ public class BuilderEventHandler implements MouseListener, MouseTrackListener,
 
 	private void handleMouseRightButtonDrag(MouseEvent e) {
 		// System.out.println("handleMouseRightButtonDragged");
-		
+
 		switch (MouseControlMode.getCurrentMode()) {
 		case MoveCamera:
 			camera.pan(e.x, e.y);
@@ -879,6 +882,9 @@ public class BuilderEventHandler implements MouseListener, MouseTrackListener,
 			indexForTest %= partList.size();
 
 			partList.get(indexForTest).setHidden(false);
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.LDrawDirectiveDidChanged,
+					new LDrawDirectiveDidChanged(partList.get(indexForTest)));
 			indexForTest++;
 			break;
 		case Cut:
@@ -1007,8 +1013,7 @@ public class BuilderEventHandler implements MouseListener, MouseTrackListener,
 					.updateScreenProjectionVerticesMapAll();
 			break;
 		case FindNReplace:
-			new PartReplaceDlg(Display.getCurrent().getActiveShell(),
-					SWT.DIALOG_TRIM).open();
+			new PartReplaceDlg(builder.getShell(), SWT.DIALOG_TRIM).open();
 			break;
 		case OpenConnectivityEditor:
 			if (directiveSelectionManager.getNumOfSelectedDirectives() == 1) {
@@ -1063,8 +1068,7 @@ public class BuilderEventHandler implements MouseListener, MouseTrackListener,
 			}
 			break;
 		case LSynthAddCommand:
-			LSynthDlg dlg = new LSynthDlg(
-					Display.getCurrent().getActiveShell(), SWT.DIALOG_TRIM);
+			LSynthDlg dlg = new LSynthDlg(builder.getShell(), SWT.DIALOG_TRIM);
 			try {
 				dlg.open();
 			} catch (Exception e) {
@@ -1077,8 +1081,8 @@ public class BuilderEventHandler implements MouseListener, MouseTrackListener,
 					NotificationMessageT.LDrawModelDidChanged);
 			break;
 		case CommentAdd: {
-			TextInputDialog tDlg = new TextInputDialog(Display.getCurrent()
-					.getActiveShell(), SWT.DIALOG_TRIM);
+			TextInputDialog tDlg = new TextInputDialog(builder.getShell(),
+					SWT.DIALOG_TRIM);
 			tDlg.setText("New Comment");
 			String inputString = (String) tDlg.open();
 			if (inputString != null) {
@@ -1093,7 +1097,37 @@ public class BuilderEventHandler implements MouseListener, MouseTrackListener,
 			}
 		}
 			break;
+		case CameraPosInsert: {
+			TextInputDialog tDlg = new TextInputDialog(builder.getShell(),
+					SWT.DIALOG_TRIM);
+			tDlg.setText("New Camera Position");
+			String inputString = (String) tDlg.open();
+			if (inputString != null) {
+				String description = inputString;
+				MOCBuilderUndoWrapper.getInstance().insertANewCameraTransform(
+						null, 0, description);
+			}
+		}
+			break;
+		case OverwirteCameraPos:
+			if (directiveSelectionManager
+					.getLastSelectedCameraTransformCommand() == null)
+				return;
 
+			CameraTransformCommand cCommand = directiveSelectionManager
+					.getLastSelectedCameraTransformCommand();
+
+			MOCBuilderUndoWrapper.getInstance().updateCameraTransform(cCommand);
+			break;
+		case ScreenShot:
+			NotificationCenter.getInstance().postNotification(
+					NotificationMessageT.TakeScreenShot);
+			break;
+		case ScreenShotGenerate:
+			ScreenShotGenerator gen = new ScreenShotGenerator();
+			gen.open(builder.getShell().getDisplay(),
+					builder.getWorkingLDrawFile());
+			break;
 		default:
 			System.out.println("Error!!");
 		}

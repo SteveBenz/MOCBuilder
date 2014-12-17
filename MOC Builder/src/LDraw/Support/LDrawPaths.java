@@ -11,7 +11,7 @@ import Builder.BuilderConfigurationManager;
 import LDraw.Support.type.LDrawDomainT;
 
 public class LDrawPaths {
-	
+
 	private static final String LDrawPathIniName = "LDrawPaths.ini";
 	// //////////////////////////////////////////////////////////////////////////////
 	//
@@ -32,8 +32,8 @@ public class LDrawPaths {
 	public static String TEXTURES_DIRECTORY_NAME = "textures";
 	public static String UNOFFICIAL_DIRECTORY_NAME = "Unofficial";
 	public static String LSYNTH_DIRECTORY_NAME = "LSynth";
-	
-	private ArrayList<String>pathList; 
+
+	private ArrayList<String> pathList;
 
 	// //////////////////////////////////////////////////////////////////////////////
 	//
@@ -55,11 +55,11 @@ public class LDrawPaths {
 	private static LDrawPaths _instance = null;
 
 	/**
-	 * @uml.property  name="preferredLDrawPath"
+	 * @uml.property name="preferredLDrawPath"
 	 */
 	private String preferredLDrawPath;
-	
-	private LDrawPaths(){
+
+	private LDrawPaths() {
 		pathList = new ArrayList<String>();
 	}
 
@@ -98,7 +98,7 @@ public class LDrawPaths {
 
 	/**
 	 * @param pathIn
-	 * @uml.property  name="preferredLDrawPath"
+	 * @uml.property name="preferredLDrawPath"
 	 */
 	public void setPreferredLDrawPath(String pathIn) {
 		this.preferredLDrawPath = pathIn;
@@ -124,7 +124,7 @@ public class LDrawPaths {
 			path = path + PARTS_DIRECTORY_NAME;
 		}
 
-		return path+"/";
+		return path + "/";
 
 	}
 
@@ -136,7 +136,8 @@ public class LDrawPaths {
 		String path = null;
 
 		if (domain == LDrawDomainT.LDrawUserOfficial
-				|| domain == LDrawDomainT.LDrawUserUnofficial || domain==LDrawDomainT.LDrawLSynthUnofficial) {
+				|| domain == LDrawDomainT.LDrawUserUnofficial
+				|| domain == LDrawDomainT.LDrawLSynthUnofficial) {
 			baseLDrawPath = preferredLDrawPath;
 		} else {
 			baseLDrawPath = internalLDrawPath();
@@ -145,15 +146,15 @@ public class LDrawPaths {
 		if (domain == LDrawDomainT.LDrawUserOfficial
 				|| domain == LDrawDomainT.LDrawInternalOfficial) {
 			path = baseLDrawPath + PRIMITIVES_DIRECTORY_NAME;
-		} else if(domain==LDrawDomainT.LDrawLSynthUnofficial){
+		} else if (domain == LDrawDomainT.LDrawLSynthUnofficial) {
 			path = baseLDrawPath + UNOFFICIAL_DIRECTORY_NAME;
-			path = path + "/"+LSYNTH_DIRECTORY_NAME;
-		}else{
+			path = path + "/" + LSYNTH_DIRECTORY_NAME;
+		} else {
 			path = baseLDrawPath + UNOFFICIAL_DIRECTORY_NAME;
 			path = path + PRIMITIVES_DIRECTORY_NAME;
 		}
 
-		return path+"/";
+		return path + "/";
 	}
 
 	public String primitives48PathForDomain(LDrawDomainT domain) {
@@ -161,7 +162,7 @@ public class LDrawPaths {
 
 		path = path + PRIMITIVES_48_DIRECTORY_NAME;
 
-		return path+"/";
+		return path + "/";
 
 	}
 
@@ -208,8 +209,6 @@ public class LDrawPaths {
 		return ldconfigPath;
 
 	}
-
-	
 
 	// ========== partCatalogPath
 	// ===================================================
@@ -277,43 +276,40 @@ public class LDrawPaths {
 	//
 	// ==============================================================================
 
-	public String pathForPartName(String partName) {		
-		ArrayList<String>	pathList	= null;
-		String fixedPartName	= partName;
-		String		partPath		= null;
-		
-		if(pathList == null)
-		{
+	public String pathForPartName(String partName) {
+		ArrayList<String> pathList = null;
+		String fixedPartName = partName;
+		String partPath = null;
+
+		if (pathList == null) {
 			pathList = getLDrawPartPathList();
-			
+
 		}
-		
-		// LDraw references parts in subfolders by their relative pathnames in DOS 
+
+		// LDraw references parts in subfolders by their relative pathnames in
+		// DOS
 		// (e.g., "s\765s01.dat"). Convert to UNIX for simple searching.
-		while(fixedPartName.contains("\\"))
-			fixedPartName = fixedPartName.replace("\\",  "/");
-				
-		// If we pass an empty string, we'll wind up test for directories' existences --
+		while (fixedPartName.contains("\\"))
+			fixedPartName = fixedPartName.replace("\\", "/");
+
+		// If we pass an empty string, we'll wind up test for directories'
+		// existences --
 		// not what we want to do.
-		if(partName.length() == 0)
-		{
+		if (partName.length() == 0) {
 			partPath = null;
-		}
-		else
-		{
-			//We have a file path name; try each directory.
-			
-			for(String basePath : pathList)
-			{
-				String testPath = basePath+fixedPartName;
-				
-				if(new File(testPath).isFile()){
+		} else {
+			// We have a file path name; try each directory.
+
+			for (String basePath : pathList) {
+				String testPath = basePath + fixedPartName;
+
+				if (new File(testPath).isFile()) {
 					partPath = testPath;
 					break;
 				}
 			}
 		}
-		
+
 		return partPath;
 	}
 
@@ -343,7 +339,8 @@ public class LDrawPaths {
 
 		boolean folderIsValid = false;
 
-		if (new File(folderPath).isDirectory() && new File(partsFolderPath).isDirectory()
+		if (new File(folderPath).isDirectory()
+				&& new File(partsFolderPath).isDirectory()
 				&& new File(primitivesFolderPath).isDirectory()) {
 			folderIsValid = true;
 		}
@@ -351,16 +348,16 @@ public class LDrawPaths {
 		return folderIsValid;
 
 	}
-	
-	public ArrayList<String> getLDrawPartPathList(){
-		if(pathList == null || pathList.size()==0)
+
+	public ArrayList<String> getLDrawPartPathList() {
+		if (pathList == null || pathList.size() == 0)
 			loadPartPathsFromFile();
 		return pathList;
 	}
-	
-	
+
 	private void writeCategoryToFile() {
-		String iniPath = BuilderConfigurationManager.getDefaultDataDirectoryPath()+LDrawPathIniName;
+		String iniPath = BuilderConfigurationManager
+				.getDefaultDataDirectoryPath() + LDrawPathIniName;
 		File pathIniFile = new File(iniPath);
 		String contents = "";
 		for (String path : pathList)
@@ -376,7 +373,7 @@ public class LDrawPaths {
 			e.printStackTrace();
 		}
 	}
-	
+
 	private void loadPartPathsFromCode() {
 		if (pathList == null)
 			pathList = new ArrayList<String>();
@@ -386,16 +383,19 @@ public class LDrawPaths {
 		pathList.add(partsPathForDomain(LDrawDomainT.LDrawUserOfficial));
 		pathList.add(primitives48PathForDomain(LDrawDomainT.LDrawUserOfficial));
 		pathList.add(primitivesPathForDomain(LDrawDomainT.LDrawUserOfficial));
-		pathList.add(partsPathForDomain(LDrawDomainT.LDrawUserUnofficial));
-		pathList.add(primitives48PathForDomain(LDrawDomainT.LDrawUserUnofficial));
-		pathList.add(primitivesPathForDomain(LDrawDomainT.LDrawUserUnofficial));
-//		pathList.add(partsPathForDomain(LDrawDomainT.LDrawInternalOfficial));
-//		pathList.add(primitives48PathForDomain(LDrawDomainT.LDrawInternalOfficial));
-//		pathList.add(primitivesPathForDomain(LDrawDomainT.LDrawInternalOfficial));
-//		pathList.add(partsPathForDomain(LDrawDomainT.LDrawInternalUnofficial));
-//		pathList.add(primitives48PathForDomain(LDrawDomainT.LDrawInternalUnofficial));
-//		pathList.add(primitivesPathForDomain(LDrawDomainT.LDrawInternalUnofficial));
-//		
+
+		 pathList.add(partsPathForDomain(LDrawDomainT.LDrawUserUnofficial));
+		 pathList.add(primitives48PathForDomain(LDrawDomainT.LDrawUserUnofficial));
+		 pathList.add(primitivesPathForDomain(LDrawDomainT.LDrawUserUnofficial));
+
+		 pathList.add(partsPathForDomain(LDrawDomainT.LDrawInternalOfficial));
+		 pathList.add(primitives48PathForDomain(LDrawDomainT.LDrawInternalOfficial));
+		 pathList.add(primitivesPathForDomain(LDrawDomainT.LDrawInternalOfficial));
+
+		 pathList.add(partsPathForDomain(LDrawDomainT.LDrawInternalUnofficial));
+		 pathList.add(primitives48PathForDomain(LDrawDomainT.LDrawInternalUnofficial));
+		 pathList.add(primitivesPathForDomain(LDrawDomainT.LDrawInternalUnofficial));
+		//
 		pathList.add(primitives48PathForDomain(LDrawDomainT.LDrawLSynthUnofficial));
 		pathList.add(primitivesPathForDomain(LDrawDomainT.LDrawLSynthUnofficial));
 	}
@@ -405,7 +405,8 @@ public class LDrawPaths {
 			pathList = new ArrayList<String>();
 		else
 			pathList.clear();
-		String iniPath = BuilderConfigurationManager.getDefaultDataDirectoryPath()+LDrawPathIniName;
+		String iniPath = BuilderConfigurationManager
+				.getDefaultDataDirectoryPath() + LDrawPathIniName;
 		File categoryFile = new File(iniPath);
 		if (categoryFile.exists()) {
 			try {

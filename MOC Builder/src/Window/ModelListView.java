@@ -89,7 +89,11 @@ public class ModelListView implements ILDrawSubscriber, Listener,
 
 					TreeItem mainModelTreeItem = new TreeItem(treeComponent,
 							SWT.NONE);
-					mainModelTreeItem.setText(mainModel.modelName());
+					if (mainModel.modelName() == null
+							|| mainModel.modelName().equals(""))
+						mainModelTreeItem.setText("Untitled.ldr");
+					else
+						mainModelTreeItem.setText(mainModel.modelName());
 					mainModelTreeItem.setData(mainModel);
 					mainModelTreeItem.setImage(folderImage);
 					mainModelTreeItem.setFont(FontManager.getInstance()

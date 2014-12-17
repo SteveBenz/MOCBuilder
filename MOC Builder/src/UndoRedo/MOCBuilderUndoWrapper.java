@@ -5,8 +5,11 @@ import java.util.HashMap;
 import java.util.Map.Entry;
 
 import Builder.DirectiveSelectionManager;
+import Builder.MainCamera;
+import Command.CameraTransformCommand;
 import Command.LDrawColor;
 import Command.LDrawDrawableElement;
+import Command.LDrawLSynth;
 import Command.LDrawLSynthDirective;
 import Command.LDrawPart;
 import Common.Matrix4;
@@ -46,12 +49,13 @@ public class MOCBuilderUndoWrapper {
 		for (LDrawDirective directive : DirectiveSelectionManager.getInstance()
 				.getSelectedDirectiveList()) {
 			if (directive instanceof LDrawLSynthDirective) {
-				if (directive.enclosingDirective().isSelected()==false){
+				if (directive.enclosingDirective().isSelected() == false) {
 					DirectiveSelectionManager.getInstance()
 							.addDirectiveToSelection(
 									directive.enclosingDirective());
 				}
-				DirectiveSelectionManager.getInstance().removeDirectiveFromSelection(directive);
+				DirectiveSelectionManager.getInstance()
+						.removeDirectiveFromSelection(directive);
 			}
 		}
 
@@ -178,6 +182,16 @@ public class MOCBuilderUndoWrapper {
 
 	}
 
+	public void insertDirectiveToWorkingFile(int index, LDrawStep step,
+			LDrawDirective directive) {
+		builder.insertDirectiveToWorkingFile(index, step, directive);
+
+		AddNRemoveDirectiveAction action = new AddNRemoveDirectiveAction();
+		action.addDirective(directive);
+		LDrawUndoRedoManager.getInstance().pushUndoAction(action);
+
+	}
+
 	public void addNewGroupToWorkingFile(int indexOfDirective) {
 		LDrawStep step = builder.addStepToWorkingFileAt(indexOfDirective);
 		AddNRemoveDirectiveAction action = new AddNRemoveDirectiveAction();
@@ -192,11 +206,12 @@ public class MOCBuilderUndoWrapper {
 		for (LDrawDirective directive : DirectiveSelectionManager.getInstance()
 				.getSelectedDirectiveList()) {
 			if (directive instanceof LDrawLSynthDirective) {
-				if (directive.enclosingDirective().isSelected()==false)
+				if (directive.enclosingDirective().isSelected() == false)
 					DirectiveSelectionManager.getInstance()
 							.addDirectiveToSelection(
 									directive.enclosingDirective());
-				DirectiveSelectionManager.getInstance().removeDirectiveFromSelection(directive);
+				DirectiveSelectionManager.getInstance()
+						.removeDirectiveFromSelection(directive);
 			}
 		}
 		for (LDrawDirective directive : DirectiveSelectionManager.getInstance()
@@ -355,5 +370,45 @@ public class MOCBuilderUndoWrapper {
 		NotificationCenter.getInstance().postNotification(
 				NotificationMessageT.LDrawDirectiveDidChanged,
 				new LDrawDirectiveDidChanged(directive));
+	}
+
+	public void updateCameraTransform(CameraTransformCommand cCommand) {
+		MainCamera camera = builder.getCamera();
+		cCommand.setDistanceToObject(camera.getDistanceBetweenObjectToCamera());
+		cCommand.setLookAtPos(new Vector3f(camera.getLookAtPos()));
+		cCommand.setRotation(camera.getCurrentRotation());
+
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.LDrawDirectiveDidChanged,
+				new LDrawDirectiveDidChanged(cCommand));
+	}
+
+	public void insertANewCameraTransform(LDrawStep step, int index,
+			String description) {
+		CameraTransformCommand cCommand = new CameraTransformCommand();
+		cCommand.setDesciprion(description);
+		MainCamera camera = builder.getCamera();
+		cCommand.setDistanceToObject(camera.getDistanceBetweenObjectToCamera());
+		cCommand.setLookAtPos(new Vector3f(camera.getLookAtPos()));
+		cCommand.setRotation(camera.getCurrentRotation());
+
+		if (step == null)
+			addDirectiveToWorkingFile(cCommand);
+		else
+			insertDirectiveToWorkingFile(index, step, cCommand);
+	}
+
+	public void addANewCameraTransform(LDrawStep step, String description) {
+		CameraTransformCommand cCommand = new CameraTransformCommand();
+		cCommand.setDesciprion(description);
+		MainCamera camera = builder.getCamera();
+		cCommand.setDistanceToObject(camera.getDistanceBetweenObjectToCamera());
+		cCommand.setLookAtPos(new Vector3f(camera.getLookAtPos()));
+		cCommand.setRotation(camera.getCurrentRotation());
+
+		if (step == null)
+			addDirectiveToWorkingFile(cCommand);
+		else
+			addDirectiveToWorkingFile(step, cCommand);
 	}
 }

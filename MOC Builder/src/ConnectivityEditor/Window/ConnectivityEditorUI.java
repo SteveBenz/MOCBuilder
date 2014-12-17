@@ -61,6 +61,8 @@ public class ConnectivityEditorUI implements GLEventListener {
 	Shell shell;
 	SashForm sashForm;
 	Composite mainView;
+	
+	RightPanel rightPanel;
 
 	private static ConnectivityEditorUI _instance = null;
 
@@ -137,6 +139,7 @@ public class ConnectivityEditorUI implements GLEventListener {
 			if (!display.readAndDispatch())
 				display.sleep();
 		}
+		rightPanel.terminate();
 		browserUI.close();
 		_instance = null;
 	}
@@ -172,7 +175,7 @@ public class ConnectivityEditorUI implements GLEventListener {
 		GlobalFocusManagerForConnectivityEditor.getInstance(glcanvas);
 
 		// right panel
-		Composite rightPanel = new RightPanel(sashForm, SWT.NONE);
+		rightPanel = new RightPanel(sashForm, SWT.NONE);
 		GridData gridData = new GridData(GridData.FILL_BOTH);
 		rightPanel.setLayoutData(gridData);
 	}

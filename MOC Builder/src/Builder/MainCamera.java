@@ -220,28 +220,37 @@ public class MainCamera extends LDrawGLCamera {
 		startCameraRotateY = currentCameraRotateY;
 	}
 
+	public Vector2f getCurrentRotation() {
+		return new Vector2f(currentCameraRotateX, currentCameraRotateY);
+	}
+
+	public void setRotation(Vector2f rotation) {
+		startCameraRotateX = currentCameraRotateX = rotation.getX();
+		startCameraRotateY = currentCameraRotateY = rotation.getY();
+		makeModelView();
+	}
+
 	public void rotate(int x, int y) {
 		// TODO Auto-generated method stub
 		int mouseX = mouseXStartForCameraRotate - x;
 		int mouseY = mouseYStartForCameraRotate - y;
 
-//		boolean isNeedToReverse = false;
-		
-//		if(currentCameraRotateY>0){
-//			if(mouseYStartForCameraRotate > screenHeight/2)
-//				isNeedToReverse=true;
-//		}else{
-//			if(mouseYStartForCameraRotate < screenHeight/2)
-//				isNeedToReverse=true;
-//		}	
+		// boolean isNeedToReverse = false;
 
-//		if (isNeedToReverse)
-//			currentCameraRotateX = startCameraRotateX
-//					- (((float) mouseX) / 100.0f);
-//		else
-			currentCameraRotateX = startCameraRotateX
-					+ (((float) mouseX) / 100.0f);
-		
+		// if(currentCameraRotateY>0){
+		// if(mouseYStartForCameraRotate > screenHeight/2)
+		// isNeedToReverse=true;
+		// }else{
+		// if(mouseYStartForCameraRotate < screenHeight/2)
+		// isNeedToReverse=true;
+		// }
+
+		// if (isNeedToReverse)
+		// currentCameraRotateX = startCameraRotateX
+		// - (((float) mouseX) / 100.0f);
+		// else
+		currentCameraRotateX = startCameraRotateX + (((float) mouseX) / 100.0f);
+
 		currentCameraRotateY = startCameraRotateY + (((float) mouseY) / 100.0f);
 
 		makeModelView();

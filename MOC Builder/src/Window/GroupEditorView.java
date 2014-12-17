@@ -2,6 +2,7 @@ package Window;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Locale;
 import java.util.Map.Entry;
 
 import org.eclipse.swt.SWT;
@@ -42,6 +43,9 @@ import org.eclipse.swt.widgets.TreeItem;
 
 import Builder.BuilderConfigurationManager;
 import Builder.DirectiveSelectionManager;
+import Builder.MainCamera;
+import Command.CameraTransformCommand;
+import Command.LDrawDrawableElement;
 import Command.LDrawLSynth;
 import Command.LDrawPart;
 import Command.PartTypeT;
@@ -74,6 +78,7 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 	private Image ldrawPartImage;
 	private Image ldrawCommentImage;
 	private Image ldrawLSynthImage;
+	private Image cameraTransformImage;
 	private Image noConnectivityImage;
 	private Image folderImage;
 	private Display display;
@@ -200,6 +205,23 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 						treeItem.setText(description);
 						treeItem.setData(metaCommand);
 						treeItem.setImage(ldrawCommentImage);
+					} else if (directive instanceof CameraTransformCommand) {
+						CameraTransformCommand cCommand = (CameraTransformCommand) directive;
+						treeItem = new TreeItem(treeItem_Step, SWT.NONE);
+						treeItem.setFont(FontManager.getInstance().getFont(
+								"Arial", 11, SWT.NORMAL));
+
+						String description = String.format(Locale.US,
+								"%s P: %.1f, %.1f, %.1f A: %.1f, %.1f D: %.1f",
+								cCommand.description(), cCommand.getLookAt().x,
+								cCommand.getLookAt().y, cCommand.getLookAt().z,
+								cCommand.getRotation().getX(), cCommand
+										.getRotation().getY(), cCommand
+										.getDistanceToObject());
+
+						treeItem.setText(description);
+						treeItem.setData(cCommand);
+						treeItem.setImage(cameraTransformImage);
 					} else if (LDrawLSynth.class.isInstance(directive)) {
 						LDrawLSynth lsynth = (LDrawLSynth) directive;
 						treeItem = new TreeItem(treeItem_Step, SWT.NONE);
@@ -273,6 +295,14 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 						treeItem.setText(description);
 						treeItem.setData(lsynth);
 					}
+					if (directive instanceof LDrawDrawableElement) {
+						if (((LDrawDrawableElement) directive).isHidden())
+							treeItem.setForeground(display
+									.getSystemColor(SWT.COLOR_GRAY));
+						else
+							treeItem.setForeground(display
+									.getSystemColor(SWT.COLOR_BLACK));
+					}
 				}
 				treeItem_Step.setExpanded(true);
 				groupTreeComponent.setVisible(true);
@@ -328,30 +358,42 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 				LDrawLSynth currentLSynth = DirectiveSelectionManager
 						.getInstance().getLastSelectedLSynth();
 
+				CameraTransformCommand currentCameraTransformCommand = DirectiveSelectionManager
+						.getInstance().getLastSelectedCameraTransformCommand();
 				LDrawStep currentStep = mocBuilder.getCurrentStep();
+
 				LDrawDirective directive;
 				for (TreeItem item_step : groupTreeComponent.getItems()) {
 					directive = (LDrawDirective) item_step.getData();
 					if (directive instanceof LDrawStep) {
 						if (directive == currentStep) {
-							FontData fontData = item_step.getFont().getFontData()[0];
-							item_step.setFont(FontManager.getInstance().getFont(
-									fontData.getName(), fontData.getHeight(), SWT.BOLD));
+							FontData fontData = item_step.getFont()
+									.getFontData()[0];
+							item_step.setFont(FontManager.getInstance()
+									.getFont(fontData.getName(),
+											fontData.getHeight(), SWT.BOLD));
 						} else {
-							FontData fontData = item_step.getFont().getFontData()[0];
-							item_step.setFont(FontManager.getInstance().getFont(
-									fontData.getName(), fontData.getHeight(), SWT.NORMAL));
+							FontData fontData = item_step.getFont()
+									.getFontData()[0];
+							item_step.setFont(FontManager.getInstance()
+									.getFont(fontData.getName(),
+											fontData.getHeight(), SWT.NORMAL));
 						}
 
 						for (TreeItem item : item_step.getItems()) {
-							if (item.getData() == currentLSynth) {
-								FontData fontData = item.getFont().getFontData()[0];
+							if (item.getData() == currentLSynth
+									|| item.getData() == currentCameraTransformCommand) {
+								FontData fontData = item.getFont()
+										.getFontData()[0];
 								item.setFont(FontManager.getInstance().getFont(
-										fontData.getName(), fontData.getHeight(), SWT.BOLD));
+										fontData.getName(),
+										fontData.getHeight(), SWT.BOLD));
 							} else {
-								FontData fontData = item.getFont().getFontData()[0];
+								FontData fontData = item.getFont()
+										.getFontData()[0];
 								item.setFont(FontManager.getInstance().getFont(
-										fontData.getName(), fontData.getHeight(), SWT.NORMAL));
+										fontData.getName(),
+										fontData.getHeight(), SWT.NORMAL));
 							}
 						}
 					}
@@ -405,6 +447,8 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 				"/Resource/Image/comment.png");
 		folderImage = ResourceManager.getInstance().getImage(display,
 				"/Resource/Image/folder_brick.png");
+		cameraTransformImage = ResourceManager.getInstance().getImage(display,
+				"/Resource/Image/Camera.png");
 		groupTreeComponent.addMouseListener(new MouseListener() {
 
 			@Override
@@ -443,6 +487,9 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 							DirectiveSelectionManager.getInstance()
 									.addDirectiveToSelection(subDirective);
 						}
+					} else if (object instanceof CameraTransformCommand) {
+						handleDoubleClickForCameraTransformCommand((CameraTransformCommand) object);
+
 					}
 					GlobalFocusManager.getInstance().forceFocusToMainView();
 				}
@@ -536,6 +583,39 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 		editor.minimumWidth = 50;
 	}
 
+	protected void handleDoubleClickForCameraTransformCommand(
+			CameraTransformCommand cCommand) {
+		if (groupTreeComponent.getSelectionCount() != 1)
+			return;
+
+		MainCamera camera = mocBuilder.getCamera();
+		camera.moveTo(cCommand.getLookAt());
+		camera.setRotation(cCommand.getRotation());
+		camera.setDistanceBetweenObjectToCamera(cCommand.getDistanceToObject());
+
+		TreeItem selectedItem = groupTreeComponent.getSelection()[0];
+		DirectiveSelectionManager.getInstance().clearSelection();
+		boolean flag = false;
+		for (TreeItem item : groupTreeComponent.getItems()) {
+			for (TreeItem subItem : item.getItems()) {
+				if (selectedItem == subItem) {
+					flag = true;
+					continue;
+				}
+				if (flag) {
+					DirectiveSelectionManager.getInstance()
+							.addDirectiveToSelection(
+									(LDrawDirective) subItem.getData(), false);
+				}
+			}
+		}
+		mocBuilder.showAllStep();
+		MOCBuilderUndoWrapper.getInstance().hideSelectedDirectives();
+		NotificationCenter.getInstance().postNotification(
+				NotificationMessageT.NeedRedraw);
+
+	}
+
 	protected void modifyComment() {
 		for (final TreeItem item : groupTreeComponent.getSelection()) {
 			if (item.getData() instanceof LDrawMetaCommand) {
@@ -555,7 +635,6 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 		MenuItem addCommentItem = new MenuItem(menu, SWT.PUSH);
 		addCommentItem.setText("New Comment");
 		addCommentItem.addSelectionListener(new SelectionListener() {
-
 			@Override
 			public void widgetSelected(SelectionEvent e) {
 				TreeItem[] selectedItems = groupTreeComponent.getSelection();
@@ -819,8 +898,36 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 			}
 		});
 
-		menu.addMenuListener(new MenuListener() {
+		new MenuItem(menu, SWT.SEPARATOR);
+		final MenuItem newCameraTransform = new MenuItem(menu, SWT.PUSH);
+		newCameraTransform.setText("Insert A New Camera Position");
+		newCameraTransform.addSelectionListener(new SelectionListener() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				handleInsertANewCameraTransform();
+			}
 
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+
+			}
+		});
+
+		final MenuItem updateCameraTransform = new MenuItem(menu, SWT.PUSH);
+		updateCameraTransform.setText("Overwrite Camera Position");
+		updateCameraTransform.addSelectionListener(new SelectionListener() {
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				handleUpdateCameraTransform();
+			}
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+
+			}
+		});
+
+		menu.addMenuListener(new MenuListener() {
 			@Override
 			public void menuShown(MenuEvent e) {
 				int count = groupTreeComponent.getSelectionCount();
@@ -829,7 +936,7 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 					// seprateStep.setEnabled(true);
 					deleteItem.setEnabled(true);
 					makeModel.setEnabled(true);
-					extractModel.setEnabled(false);
+					updateCameraTransform.setEnabled(false);
 					LDrawDirective directive;
 					for (TreeItem item : groupTreeComponent.getSelection()) {
 						directive = (LDrawDirective) item.getData();
@@ -840,15 +947,18 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 					}
 					makeGroupItem.setEnabled(true);
 					renameItem.setEnabled(false);
+					updateCameraTransform.setEnabled(false);
 				} else if (count == 1) {
 					makeModel.setEnabled(true);
-					extractModel.setEnabled(false);
+					updateCameraTransform.setEnabled(false);
 					if (groupTreeComponent.getSelection()[0].getData() instanceof LDrawPart) {
 						if (((LDrawPart) groupTreeComponent.getSelection()[0]
 								.getData()).getCacheType() == PartTypeT.PartTypeSubmodel)
-							extractModel.setEnabled(true);
+							updateCameraTransform.setEnabled(true);
 					} else if (groupTreeComponent.getSelection()[0].getData() instanceof LDrawMetaCommand) {
 						modifyCommentItem.setEnabled(true);
+					} else if (groupTreeComponent.getSelection()[0].getData() instanceof CameraTransformCommand) {
+						updateCameraTransform.setEnabled(true);
 					}
 
 					// seprateStep.setEnabled(true);
@@ -860,12 +970,13 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 						renameItem.setEnabled(false);
 				} else {
 					makeModel.setEnabled(false);
-					extractModel.setEnabled(false);
+					updateCameraTransform.setEnabled(false);
 					// seprateStep.setEnabled(false);
 					deleteItem.setEnabled(false);
 					makeGroupItem.setEnabled(false);
 					renameItem.setEnabled(false);
 					modifyCommentItem.setEnabled(false);
+					updateCameraTransform.setEnabled(false);
 				}
 			}
 
@@ -875,6 +986,44 @@ public class GroupEditorView implements ILDrawSubscriber, Runnable, Listener {
 		});
 
 		return menu;
+	}
+
+	protected void handleInsertANewCameraTransform() {
+		TextInputDialog dlg = new TextInputDialog(Display.getCurrent()
+				.getActiveShell(), SWT.DIALOG_TRIM);
+		dlg.setText("New Camera Position");
+		String inputString = (String) dlg.open();
+		if (inputString != null) {
+			String description = inputString;
+			if (groupTreeComponent.getSelectionCount() == 1) {
+				Object data = groupTreeComponent.getSelection()[0].getData();
+				if (data instanceof LDrawStep) {
+					MOCBuilderUndoWrapper.getInstance().addANewCameraTransform(
+							(LDrawStep) data, description);
+				} else {
+					LDrawStep step = ((LDrawDirective) data).enclosingStep();
+					int index = step.indexOfDirective((LDrawDirective) data);
+					MOCBuilderUndoWrapper
+							.getInstance()
+							.insertANewCameraTransform(step, index, description);
+				}
+
+			} else {
+				MOCBuilderUndoWrapper.getInstance().insertANewCameraTransform(
+						null, 0, description);
+			}
+
+		}
+	}
+
+	protected void handleUpdateCameraTransform() {
+		if (groupTreeComponent.getSelection().length != 1)
+			return;
+		TreeItem item = groupTreeComponent.getSelection()[0];
+		CameraTransformCommand cCommand = (CameraTransformCommand) item
+				.getData();
+
+		MOCBuilderUndoWrapper.getInstance().updateCameraTransform(cCommand);
 	}
 
 	protected void handleMakeASubmodel() {

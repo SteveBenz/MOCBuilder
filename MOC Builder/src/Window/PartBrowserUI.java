@@ -876,9 +876,10 @@ public class PartBrowserUI implements DragSourceListener {
 			items[i].setImage(folderImage);
 			items[i].setFont(FontManager.getInstance().getFont("Arial", 12,
 					SWT.NORMAL));
-			updateTreeItem(items[i], list);
+			updateTreeItem(items[i], list);			
 		}
 
+		
 		tree.setRedraw(true);
 		tree.setVisible(true);
 	}

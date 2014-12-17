@@ -3,6 +3,7 @@ package Renderer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
 import java.util.ArrayList;
+import java.util.Locale;
 
 import LDraw.Support.Range;
 
@@ -939,14 +940,23 @@ public class Mesh {
 
 					Vertex p2 = f.vertex[i];
 					int begin, end, v;
-					// Range result = MeshSmooth.range_for_point(vertices[0],
-					// vertices[vertex_count-1], vertex_count,
-					// p1.getLocation());
 
 					Range result = MeshSmooth.range_for_vertex(vertices, 0,
-							vertex_count, p1Index);
+							vertex_count, p1);
 					begin = result.getLocation();
 					end = result.getMaxRange();
+
+//					System.out.println("start");
+//					System.out.println(p1.getLocation()[0] + ","
+//							+ p1.getLocation()[1] + ","
+//							+ p1.getLocation()[2]);
+//					System.out.println(result.getLocation()+", "+result.getMaxRange());
+//					for (Vertex vertex : vertices) {
+//						System.out.println(vertex.getLocation()[0] + ","
+//								+ vertex.getLocation()[1] + ","
+//								+ vertex.getLocation()[2]);
+//					}
+					
 
 					for (v = begin; v <= end; v++) {
 						if (vertices.get(v).face == f)
@@ -1015,7 +1025,6 @@ public class Mesh {
 										vertices.get(v).getIndex());
 								assert (f.neighbor[i] == null);
 								if (n.neighbor[ni] == null) {
-
 									if (MeshSmooth.is_crease(f.normal,
 											n.normal, true)) {
 										f.neighbor[i] = null;
@@ -1023,9 +1032,7 @@ public class Mesh {
 										f.index[i] = -1;
 										n.index[ni] = -1;
 										break;
-									} else
-
-									{
+									} else {
 										// v.dst matches p1.p2. We have
 										// neighbors.
 										// Store both - avoid half the work when
@@ -1088,7 +1095,9 @@ public class Mesh {
 				circ_dir.put(-1);
 				float w;
 				do {
-					// printf("\tAdd: %f,%f,%f\n",c.normal[0],c.normal[1],c.normal[2]);
+					// System.out.println(String.format(Locale.US,
+					// "\tAdd: %f,%f,%f\n", c.normal[0], c.normal[1],
+					// c.normal[2]));
 
 					w = MeshSmooth.weight_for_vertex(c);
 
@@ -1114,13 +1123,14 @@ public class Mesh {
 				// we run out.
 
 				if (c != v) {
-
 					circ_dir.put(0, 1);
 					c = MeshSmooth.circulate_any(v, circ_dir);
 					while (c != null) {
-						// printf("\tAdd: %f,%f,%f\n",c.normal[0],c.normal[1],c.normal[2]);
+						// System.out.println(String.format(Locale.US,
+						// "\tAdd: %f,%f,%f\n", c.normal[0], c.normal[1],
+						// c.normal[2]));
 						w = MeshSmooth.weight_for_vertex(c);
-						if (MeshSmooth.vec3f_dot(v.face.normal, c.face.normal) > 0.0) {
+						if (MeshSmooth.vec3f_dot(v.face.normal, c.face.normal) > 0.0f) {
 							N[0] += w * c.face.normal[0];
 							N[1] += w * c.face.normal[1];
 							N[2] += w * c.face.normal[2];
@@ -1141,12 +1151,13 @@ public class Mesh {
 				}
 
 				MeshSmooth.vec3f_normalize(N);
-				// printf("Final: %f %f %f\t%f %f %f (%d)\n",v.getLocation()[0],v.getLocation()[1],v.getLocation()[2],
-				// N[0],N[1],N[2], ctr);
+				// System.out.println(String.format(Locale.US,
+				// "Final: %f %f %f\t%f %f %f\n", v.getLocation()[0],
+				// v.getLocation()[1], v.getLocation()[2], N[0], N[1],
+				// N[2]));
 				v.normal[0] = N[0];
 				v.normal[1] = N[1];
 				v.normal[2] = N[2];
-
 			}
 	}
 

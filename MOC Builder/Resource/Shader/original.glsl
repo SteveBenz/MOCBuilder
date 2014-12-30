@@ -46,9 +46,8 @@ varying vec4	position_eye;
 		gl_FrontColor.a = col.a;
 		gl_FrontColor.rgb = col.rgb;
 				 
-		if(normal == vec3(0)){
+		if(normal == vec3(0))
 			gl_FrontColor = col;
-		}
 			
 //		gl_FrontColor.rgb = norm_obj;
 
@@ -73,15 +72,19 @@ varying vec4	position_eye;
 		vec3 normal = normalize(normal_eye);
 		vec4 final_color = gl_Color;
 		final_color.rgb *= 			
-				(gl_LightSource[0].diffuse.rgb * max(0.0,dot(normal, normalize(gl_LightSource[0].position.xyz))) +
-				 gl_LightSource[1].diffuse.rgb * max(0.0,dot(normal, normalize(gl_LightSource[1].position.xyz))) +
-				 gl_LightModel.ambient.rgb*1.1f);
+				(gl_LightSource[0].diffuse.rgb * max(0.0,dot(normal, gl_LightSource[0].position.xyz)) +
+				 gl_LightSource[1].diffuse.rgb * max(0.0,dot(normal, gl_LightSource[1].position.xyz)) +
+				 gl_LightModel.ambient.rgb);
 	
 
-		float hdot = max(0.0,dot(gl_LightSource[1].position.xyz,normalize(
-				reflect(position_eye.xyz,normal)		
-				)));
-		final_color.rgb +=  min(0.1f, pow(hdot,64.0f));
+//		float hdot = max(0.0,dot(gl_LightSource[0].position.xyz,normalize(
+//				reflect(position_eye.xyz,normal)		
+//				)));
+//		final_color.rgb += pow(hdot,128.0);
+	
+	
+	
+	
 	
 		vec4 tex_color = texture2D(u_tex, tex_coord);
 		gl_FragColor = 
